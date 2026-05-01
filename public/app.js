@@ -840,9 +840,9 @@ function attemptAutoReconnect() {
   } catch (_) { }
 }
 
-// iTunes SEARCH
+// SEARCH
 async function searchItunes(query) {
-  const url = `/api/itunes-search?q=${encodeURIComponent(query)}&limit=8&country=fr`;
+  const url = `/api/search?q=${encodeURIComponent(query)}&limit=8`;
   const res = await fetch(url, {
     headers: { Accept: 'application/json' },
   });

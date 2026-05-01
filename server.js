@@ -12,43 +12,32 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/itunes-search', async (req, res) => {
+app.get('/api/search', async (req, res) => {
   const q = sanitizeSearchTerm(req.query.q);
   if (!q || q.length < 2) return res.json({ results: [] });
 
   const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 20);
-  const country = sanitizeCountry(req.query.country) || 'fr';
-  const media = 'music';
 
   try {
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=${media}&limit=${limit}&country=${encodeURIComponent(country)}`;
-    const upstream = await fetch(url, {
-      headers: {
-        // Helps avoid occasional upstream filtering based on missing UA.
-        'User-Agent': 'guess-the-song/1.0',
-        'Accept': 'application/json',
-      },
+    const params = new URLSearchParams({ q, limit: String(limit) });
+    const upstream = await fetch(`https://api.deezer.com/search?${params.toString()}`, {
+      headers: { 'User-Agent': 'guess-the-song/1.0', 'Accept': 'application/json' },
     });
-
-    if (!upstream.ok) {
-      return res.status(upstream.status).json({ error: `iTunes ${upstream.status}`, results: [] });
-    }
-
+    if (!upstream.ok) return res.status(upstream.status).json({ error: `Deezer ${upstream.status}`, results: [] });
     const data = await upstream.json();
-    const results = (Array.isArray(data.results) ? data.results : [])
-      .filter(r => r.trackId && r.trackName)
+    const results = (Array.isArray(data.data) ? data.data : [])
+      .filter(r => r.id && r.title)
       .map(r => ({
-        id: r.trackId,
-        title: r.trackName ?? 'Titre inconnu',
-        artist: r.artistName ?? '',
-        artwork: (r.artworkUrl100 ?? '').replace('100x100bb', '300x300bb').replace('100x100', '300x300'),
-        preview: r.previewUrl ?? null,
+        id: r.id,
+        title: r.title ?? 'Titre inconnu',
+        artist: r.artist?.name ?? '',
+        artwork: validateArtworkUrl(r.album?.cover_medium ?? ''),
+        preview: validatePreviewUrl(r.preview ?? null),
       }));
-
     res.set('Cache-Control', 'public, max-age=60');
     return res.json({ results });
   } catch (_) {
-    return res.status(502).json({ error: 'Erreur iTunes', results: [] });
+    return res.status(502).json({ error: 'Erreur Deezer', results: [] });
   }
 });
 
@@ -376,11 +365,6 @@ function sanitizeSearchTerm(str) {
   return String(str ?? '').trim().replace(/[<>&"']/g, '').slice(0, 100);
 }
 
-function sanitizeCountry(str) {
-  const c = String(str ?? '').trim().toLowerCase();
-  return /^[a-z]{2}$/.test(c) ? c : '';
-}
-
 function sanitizeSong(song) {
   if (!song || typeof song !== 'object') return null;
   const id = Number(song.id);
@@ -397,8 +381,8 @@ function sanitizeSong(song) {
 function validateArtworkUrl(url) {
   try {
     const u = new URL(String(url ?? ''));
-    if (!['https:'].includes(u.protocol)) return '';
-    if (!u.hostname.endsWith('mzstatic.com')) return '';
+    if (u.protocol !== 'https:') return '';
+    if (!u.hostname.endsWith('dzcdn.net') && !u.hostname.endsWith('mzstatic.com')) return '';
     return u.href;
   } catch { return ''; }
 }
@@ -408,8 +392,7 @@ function validatePreviewUrl(url) {
   try {
     const u = new URL(String(url));
     if (u.protocol !== 'https:') return null;
-    const allowed = ['audio-ssl.itunes.apple.com', 'aod.itunes.apple.com', 'audio.itunes.apple.com'];
-    if (!allowed.some(h => u.hostname.endsWith(h))) return null;
+    if (!u.hostname.endsWith('dzcdn.net')) return null;
     return u.href;
   } catch { return null; }
 }
