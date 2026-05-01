@@ -786,7 +786,7 @@ function restartGame() {
 
 function hydrateLocalSession() {
   try {
-    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return;
     const data = JSON.parse(raw);
     if (data?.name) s.me.name = sanitizeLocal(data.name);
@@ -796,7 +796,7 @@ function hydrateLocalSession() {
 function persistSession() {
   if (!s.room?.code || !s.me.name) return;
   try {
-    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
       code: s.room.code,
       name: s.me.name,
     }));
@@ -804,13 +804,13 @@ function persistSession() {
 }
 
 function clearSession() {
-  try { sessionStorage.removeItem(SESSION_STORAGE_KEY); }
+  try { localStorage.removeItem(SESSION_STORAGE_KEY); }
   catch (_) { }
 }
 
 function attemptAutoReconnect() {
   try {
-    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return;
     const saved = JSON.parse(raw);
     const code = String(saved?.code ?? '').toUpperCase();
