@@ -241,8 +241,8 @@ function renderLobby() {
 
   return `
     <div class="screen">
-      <div class="row-between" style="align-items:flex-start">
-        <div>
+      <div class="col-center">
+        <div class="col-center">
           <h2 class="ui-heading">Salle de jeu</h2>
           <p class="ui-meta">Partage le code</p>
         </div>
