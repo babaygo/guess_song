@@ -12,6 +12,46 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/api/itunes-search', async (req, res) => {
+  const q = sanitizeSearchTerm(req.query.q);
+  if (!q || q.length < 2) return res.json({ results: [] });
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 20);
+  const country = sanitizeCountry(req.query.country) || 'fr';
+  const media = 'music';
+
+  try {
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=${media}&limit=${limit}&country=${encodeURIComponent(country)}`;
+    const upstream = await fetch(url, {
+      headers: {
+        // Helps avoid occasional upstream filtering based on missing UA.
+        'User-Agent': 'guess-the-song/1.0',
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({ error: `iTunes ${upstream.status}`, results: [] });
+    }
+
+    const data = await upstream.json();
+    const results = (Array.isArray(data.results) ? data.results : [])
+      .filter(r => r.trackId && r.trackName)
+      .map(r => ({
+        id: r.trackId,
+        title: r.trackName ?? 'Titre inconnu',
+        artist: r.artistName ?? '',
+        artwork: (r.artworkUrl100 ?? '').replace('100x100bb', '300x300bb').replace('100x100', '300x300'),
+        preview: r.previewUrl ?? null,
+      }));
+
+    res.set('Cache-Control', 'public, max-age=60');
+    return res.json({ results });
+  } catch (_) {
+    return res.status(502).json({ error: 'Erreur iTunes', results: [] });
+  }
+});
+
 const rooms = {};
 
 function makeCode() {
@@ -330,6 +370,15 @@ function computeResults(room) {
 
 function sanitize(str) {
   return String(str ?? '').trim().replace(/[<>&"']/g, '').slice(0, 20);
+}
+
+function sanitizeSearchTerm(str) {
+  return String(str ?? '').trim().replace(/[<>&"']/g, '').slice(0, 100);
+}
+
+function sanitizeCountry(str) {
+  const c = String(str ?? '').trim().toLowerCase();
+  return /^[a-z]{2}$/.test(c) ? c : '';
 }
 
 function sanitizeSong(song) {

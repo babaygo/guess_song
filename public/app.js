@@ -842,17 +842,13 @@ function attemptAutoReconnect() {
 
 // iTunes SEARCH
 async function searchItunes(query) {
-  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=8&country=fr`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`iTunes ${res.status}`);
+  const url = `/api/itunes-search?q=${encodeURIComponent(query)}&limit=8&country=fr`;
+  const res = await fetch(url, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`search ${res.status}`);
   const data = await res.json();
-  return data.results.map(r => ({
-    id: r.trackId,
-    title: r.trackName ?? 'Titre inconnu',
-    artist: r.artistName ?? '',
-    artwork: (r.artworkUrl100 ?? '').replace('100x100bb', '300x300bb').replace('100x100', '300x300'),
-    preview: r.previewUrl ?? null,
-  }));
+  return Array.isArray(data.results) ? data.results : [];
 }
 
 // HELPERS
