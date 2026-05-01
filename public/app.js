@@ -1,48 +1,48 @@
 'use strict';
 
-// ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const CIRC     = 2 * Math.PI * 45;
+// CONSTANTS 
 const BLANK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3Crect fill='%231e1e35' width='1' height='1'/%3E%3C/svg%3E";
+const SESSION_STORAGE_KEY = 'guess-song-session';
 
-// ─── STATE ────────────────────────────────────────────────────────────────────
+// STATE 
 const s = {
-  socket:      null,
-  me:          { name: '', isHost: false },
-  room:        null,   // roomPublic from server
-  phase:       'home', // home | lobby | submitting | waiting | ready | playing | reveal | finished
+  socket: null,
+  me: { name: '', isHost: false },
+  room: null,   // roomPublic from server
+  phase: 'home', // home | lobby | submitting | waiting | ready | playing | reveal | finished
 
   // Submission
-  myList:          [],
-  searchResults:   [],
-  searchQuery:     '',
-  searchDebounce:  null,
-  isSearching:     false,
-  previewingId:    null,
+  myList: [],
+  searchResults: [],
+  searchQuery: '',
+  searchDebounce: null,
+  isSearching: false,
+  previewingId: null,
 
   // Playing
-  currentSong:     null,  // { song, index, total }
-  timerInterval:   null,
-  timerRemaining:  0,
-  timerStarted:    false,
-  audio:           null,
+  currentSong: null,  // { song, index, total }
+  audio: null,
+  guess: null,  // guessed player name
 
   // Reveal
-  revealData:      null,  // { playerName, song }
+  revealData: null,  // { playerName, song }
 
   // Finished
-  recap:           [],
+  recap: [],
 
-  errorMsg:        '',
+  errorMsg: '',
 };
 
-// ─── BOOT ─────────────────────────────────────────────────────────────────────
+// BOOT
 window.addEventListener('DOMContentLoaded', () => {
   s.socket = io();
   bindSocketEvents();
+  hydrateLocalSession();
   render();
+  attemptAutoReconnect();
 });
 
-// ─── SOCKET EVENTS ───────────────────────────────────────────────────────────
+// SOCKET EVENTS
 function bindSocketEvents() {
   const { socket } = s;
 
@@ -50,6 +50,35 @@ function bindSocketEvents() {
     s.room = room;
     // Sync config if we're host
     if (s.me.isHost) s.me.isHost = true;
+    // Update UI if in playing phase (for guess updates)
+    if (s.phase === 'playing') {
+      const playerListEl = document.querySelector('#player-list');
+      if (playerListEl) {
+        const players = s.room?.players ?? [];
+        playerListEl.innerHTML = `
+          <div class="card">
+            <span class="section-label">Qui a mis cette musique ?</span>
+            <div class="scroll-list">
+              ${players.map(p => `
+                <div class="player-entry" style="cursor:pointer;background:${s.guess === p.name ? '#4a7c59' : 'transparent'};padding:0.5rem;border-radius:6px" onclick="makeGuess('${esc(p.name)}')"
+                  title="${s.guess === p.name ? 'Sélectionné' : 'Cliquer pour deviner'}">
+                  <span>${esc(p.name)}</span>
+                  ${s.guess === p.name ? '<span style="color:#00ff00"><span class="material-symbols-outlined">check_circle</span></span>' : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+      const revealBtn = document.getElementById('reveal-btn');
+      if (revealBtn && s.me.isHost) {
+        if (s.room?.players?.every(p => p.guess !== null) && s.room?.players?.length > 1) {
+          revealBtn.disabled = false;
+        } else {
+          revealBtn.disabled = true;
+        }
+      }
+    }
     refreshLobby();
   });
 
@@ -60,26 +89,27 @@ function bindSocketEvents() {
       s.searchResults = [];
       s.searchQuery = '';
     }
-    if (phase === 'playing') {
-      s.timerStarted = false;
-      clearTimer();
-      stopAudio();
-    }
+    if (phase === 'playing') stopAudio();
     render();
   });
 
   socket.on('songUpdate', data => {
     s.currentSong = data;
-    s.timerStarted = false;
     s.phase = 'playing';
-    clearTimer();
+    s.guess = null;
     stopAudio();
     render();
+    playCurrentSongFromStart();
   });
 
   socket.on('reveal', data => {
     s.revealData = data;
     s.phase = 'reveal';
+    render();
+  });
+
+  socket.on('revealResults', data => {
+    s.revealData = { ...s.revealData, results: data.results };
     render();
   });
 
@@ -96,45 +126,42 @@ function bindSocketEvents() {
   });
 }
 
-// ─── RENDER DISPATCHER ───────────────────────────────────────────────────────
+// RENDER DISPATCHER 
 function render() {
   stopAudio();
   const app = document.getElementById('app');
   const map = {
-    home:       renderHome,
-    lobby:      renderLobby,
+    home: renderHome,
+    lobby: renderLobby,
     submitting: renderSubmitting,
-    waiting:    renderWaiting,
-    ready:      renderReady,
-    playing:    renderPlaying,
-    reveal:     renderReveal,
-    finished:   renderFinished,
+    waiting: renderWaiting,
+    ready: renderReady,
+    playing: renderPlaying,
+    reveal: renderReveal,
+    finished: renderFinished,
   };
   app.innerHTML = (map[s.phase] ?? renderHome)();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // HOME — create or join
-// ─────────────────────────────────────────────────────────────────────────────
 function renderHome() {
   return `
-    <div class="screen">
-      <div class="logo">🎵</div>
+    <div class="screen" style="min-height: 0;">
       <h1 class="title">Guess the Song</h1>
       <p class="subtitle">Chacun ajoute ses musiques depuis son téléphone,<br>puis on devine qui a mis quoi !</p>
 
       ${s.errorMsg ? `<div class="error-msg">${esc(s.errorMsg)}</div>` : ''}
 
       <div class="card">
-        <span class="section-label">Mon prénom</span>
+        <span class="section-label">Mon pseudo</span>
         <input class="input" id="input-name" type="text"
-          placeholder="ex: Lucas" maxlength="20"
+          placeholder="ex: Simon" maxlength="20"
           value="${esc(s.me.name)}"
           oninput="s.me.name = this.value.trim()" />
       </div>
 
       <button class="btn btn-primary btn-lg" onclick="createRoom()">
-        Créer une partie 🎮
+        Créer une partie
       </button>
 
       <div style="display:flex;align-items:center;gap:0.75rem">
@@ -149,8 +176,8 @@ function renderHome() {
           placeholder="ex: A3F2" maxlength="4"
           style="text-transform:uppercase;letter-spacing:0.15em;font-size:1.2rem;font-weight:700"
           oninput="this.value=this.value.toUpperCase()" />
-        <button class="btn btn-secondary" style="width:100%" onclick="joinRoom()">
-          Rejoindre →
+        <button class="btn btn-primary" style="width:100%" onclick="joinRoom()">
+          Rejoindre une partie
         </button>
       </div>
     </div>
@@ -162,11 +189,12 @@ function createRoom() {
   if (!name) { showError('Entre ton prénom !'); return; }
   s.me.name = name;
   s.errorMsg = '';
-  s.socket.emit('createRoom', { name, config: { songsPerPlayer: 4, timerDuration: 20 } }, res => {
+  s.socket.emit('createRoom', { name, config: { songsPerPlayer: 4 } }, res => {
     if (!res.ok) { showError(res.error ?? 'Erreur création salle'); return; }
     s.me.isHost = true;
     s.room = res.room;
     s.phase = 'lobby';
+    persistSession();
     render();
   });
 }
@@ -183,13 +211,12 @@ function joinRoom() {
     s.me.isHost = false;
     s.room = res.room;
     s.phase = 'lobby';
+    persistSession();
     render();
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // LOBBY
-// ─────────────────────────────────────────────────────────────────────────────
 function renderLobby() {
   if (!s.room) return renderHome();
   const { code, players, config } = s.room;
@@ -200,7 +227,7 @@ function renderLobby() {
     return `
       <div class="player-entry">
         <span>${esc(p.name)}${isMe ? ' <span style="color:var(--text-muted);font-size:0.8rem">(moi)</span>' : ''}
-          ${p.id === s.room.hostId ? '<span class="host-crown">👑</span>' : ''}
+          ${p.id === s.room.hostId ? '<span class="host-crown" title="Hôte"><span class="material-symbols-outlined">military_tech</span></span>' : ''}
         </span>
         <div class="ready-dot no" title="En attente"></div>
       </div>
@@ -212,22 +239,21 @@ function renderLobby() {
       ${isHost ? `onclick="updateConfig('songsPerPlayer',${n})"` : 'disabled'}>${n}</button>
   `).join('');
 
-  const timerOpts = [10, 20, 30].map(t => `
-    <button class="option-btn ${config.timerDuration === t ? 'active' : ''}"
-      ${isHost ? `onclick="updateConfig('timerDuration',${t})"` : 'disabled'}>${t}s</button>
-  `).join('');
-
   return `
     <div class="screen">
       <div class="row-between" style="align-items:flex-start">
         <div>
-          <h2 style="font-size:1.2rem;font-weight:800">Salle de jeu</h2>
-          <p style="color:var(--text-muted);font-size:0.82rem">Partage le code</p>
+          <h2 class="ui-heading">Salle de jeu</h2>
+          <p class="ui-meta">Partage le code</p>
         </div>
-        <div class="room-code">${esc(code)}</div>
-      </div>
 
-      <div class="info-box">📱 Chaque joueur ouvre cette page sur son téléphone et entre le code <strong>${esc(code)}</strong></div>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <div class="room-code">${esc(code)}</div>
+          <button class="icon-btn is-play" onclick="copyRoomCode()" title="Copier le code" aria-label="Copier le code">
+            <span class="material-symbols-outlined">content_copy</span>
+          </button>
+        </div>
+      </div>
 
       <div class="card">
         <span class="section-label">Joueurs (${players.length})</span>
@@ -239,23 +265,18 @@ function renderLobby() {
         <div class="option-row">${songOpts}</div>
       </div>
 
-      <div class="card">
-        <span class="section-label">Temps de réflexion ${!isHost ? '<span style="color:var(--text-muted)">(hôte seulement)</span>' : ''}</span>
-        <div class="option-row">${timerOpts}</div>
-      </div>
-
       <div class="spacer"></div>
       ${isHost
-        ? `<button class="btn btn-primary btn-lg"
+      ? `<button class="btn btn-primary btn-lg"
             onclick="startSubmission()"
             ${players.length < 2 ? 'disabled' : ''}>
-            ${players.length < 2 ? 'Attends un autre joueur…' : 'Tout le monde est là ? C\'est parti ! 🚀'}
+            ${players.length < 2 ? 'Attends un autre joueur…' : 'Tout le monde est là ? C\'est parti !'}
            </button>`
-        : `<div class="center-screen" style="flex:0">
-             <div class="waiting-anim">⏳</div>
+      : `<div class="center-screen" style="flex:0">
+             <div class="waiting-anim">...</div>
              <p class="subtitle">En attente que l'hôte lance la partie…</p>
            </div>`
-      }
+    }
     </div>
   `;
 }
@@ -270,31 +291,50 @@ function updateConfig(key, value) {
   s.socket.emit('updateConfig', { code: s.room.code, config });
 }
 
+async function copyRoomCode() {
+  const code = s.room?.code;
+  if (!code) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(code);
+      return;
+    }
+  } catch (_) { }
+
+  const ta = document.createElement('textarea');
+  ta.value = code;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
 function startSubmission() {
   if (!s.me.isHost || !s.room) return;
   s.socket.emit('startSubmission', { code: s.room.code });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // SUBMISSION
-// ─────────────────────────────────────────────────────────────────────────────
 function renderSubmitting() {
   if (!s.room) return '';
   const needed = s.room.config.songsPerPlayer;
-  const count  = s.myList.length;
-  const done   = count >= needed;
+  const count = s.myList.length;
+  const done = count >= needed;
 
   return `
     <div class="screen">
       <div class="row-between">
         <div>
-          <h2 style="font-size:1.3rem;font-weight:800">${esc(s.me.name)}</h2>
-          <p style="color:var(--text-muted);font-size:0.82rem">${count} / ${needed} musiques</p>
+          <h2 class="ui-heading">${esc(s.me.name)}</h2>
+          <p class="ui-meta">${count} / ${needed} musiques</p>
         </div>
         <span class="badge">${count}/${needed}</span>
       </div>
 
-      <div class="info-box">🔒 Les autres ne voient pas ce que tu ajoutes</div>
+      <div class="info-box">Les autres ne voient pas ce que tu ajoutes</div>
 
       <div class="card">
         <span class="section-label">Rechercher une musique</span>
@@ -319,7 +359,7 @@ function renderSubmitting() {
       <button class="btn btn-primary btn-lg ${done ? 'btn-pulse' : ''}"
         onclick="submitSongs()"
         ${done ? '' : 'disabled'}>
-        ${done ? `Valider mes musiques ✓` : `Ajoute encore ${needed - count} musique${needed - count > 1 ? 's' : ''}`}
+        ${done ? `Valider mes musiques` : `Ajoute encore ${needed - count} musique${needed - count > 1 ? 's' : ''}`}
       </button>
     </div>
   `;
@@ -331,7 +371,7 @@ function renderSearchResults() {
   }
   if (s.searchResults.length > 0) {
     return s.searchResults.map((song, i) => {
-      const added   = s.myList.some(x => x.id === song.id);
+      const added = s.myList.some(x => x.id === song.id);
       const playing = s.previewingId === song.id;
       return `
         <div class="song-item">
@@ -342,8 +382,8 @@ function renderSearchResults() {
             <div class="song-artist">${esc(song.artist)}</div>
           </div>
           ${song.preview
-            ? `<button class="icon-btn is-play" onclick="togglePreview(${i})">${playing ? '⏸' : '▶'}</button>`
-            : ''}
+          ? `<button class="icon-btn is-play" onclick="togglePreview(${i})" title="${playing ? 'Pause' : 'Lecture'}"><span class="material-symbols-outlined">${playing ? 'pause' : 'play_arrow'}</span></button>`
+          : ''}
           <button class="icon-btn ${added ? 'is-remove' : 'is-add'}"
             onclick="toggleSong(${i})">${added ? '−' : '+'}</button>
         </div>
@@ -351,7 +391,7 @@ function renderSearchResults() {
     }).join('');
   }
   if (s.searchQuery) return `<div class="search-hint">Aucun résultat pour « ${esc(s.searchQuery)} »</div>`;
-  return `<div class="search-hint">Tape le titre ou l'artiste 🔍</div>`;
+  return `<div class="search-hint">Tape le titre ou l'artiste</div>`;
 }
 
 function renderMyList() {
@@ -363,7 +403,7 @@ function renderMyList() {
         <div class="song-title">${esc(song.title)}</div>
         <div class="song-artist">${esc(song.artist)}</div>
       </div>
-      <button class="icon-btn is-remove" onclick="removeFromList(${i})">✕</button>
+      <button class="icon-btn is-remove" onclick="removeFromList(${i})" title="Retirer"><span class="material-symbols-outlined">close</span></button>
     </div>
   `).join('');
 }
@@ -403,7 +443,7 @@ function togglePreview(i) {
     s.audio = new Audio(song.preview);
     s.audio.volume = 0.8;
     s.previewingId = song.id;
-    s.audio.play().catch(() => {});
+    s.audio.play().catch(() => { });
     s.audio.addEventListener('ended', () => { s.previewingId = null; refreshSearchUI(); });
   }
   refreshSearchUI();
@@ -446,13 +486,11 @@ function submitSongs() {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // WAITING (submitted, waiting for others)
-// ─────────────────────────────────────────────────────────────────────────────
 function renderWaiting() {
   const players = s.room?.players ?? [];
-  const readyCount  = players.filter(p => p.ready).length;
-  const totalCount  = players.length;
+  const readyCount = players.filter(p => p.ready).length;
+  const totalCount = players.length;
 
   const rows = players.map(p => `
     <div class="player-entry">
@@ -464,9 +502,9 @@ function renderWaiting() {
   return `
     <div class="screen">
       <div class="center-screen">
-        <div class="waiting-anim">🎵</div>
+        <div class="waiting-anim">...</div>
         <div>
-          <h2 style="font-size:1.5rem;font-weight:800">Musiques envoyées !</h2>
+          <h2 class="ui-heading">Musiques envoyées !</h2>
           <p class="subtitle" style="margin-top:0.4rem">En attente des autres joueurs…</p>
         </div>
         <div class="card" style="width:100%;max-width:300px">
@@ -478,36 +516,34 @@ function renderWaiting() {
   `;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // READY (all submitted, host launches)
-// ─────────────────────────────────────────────────────────────────────────────
 function renderReady() {
-  const players  = s.room?.players ?? [];
-  const total    = players.length * (s.room?.config.songsPerPlayer ?? 4);
-  const isHost   = s.me.isHost;
+  const players = s.room?.players ?? [];
+  const total = players.length * (s.room?.config.songsPerPlayer ?? 4);
+  const isHost = s.me.isHost;
 
   const rows = players.map(p => `
     <div class="player-entry">
       <span>${esc(p.name)}</span>
-      <span class="badge badge-green">✓ Prêt</span>
+      <span class="badge badge-green">Prêt</span>
     </div>
   `).join('');
 
   return `
     <div class="screen">
       <div class="center-screen">
-        <div style="font-size:3.5rem">🎉</div>
+        <div class="ui-kicker">Prêts</div>
         <div>
           <h1 class="title">Tout le monde est prêt !</h1>
           <p class="subtitle" style="margin-top:0.4rem">${total} musiques à deviner</p>
         </div>
         <div class="card" style="width:100%;max-width:300px;text-align:left">${rows}</div>
         ${isHost
-          ? `<button class="btn btn-primary btn-lg" style="max-width:300px" onclick="launchGame()">
-               Lancer la partie 🚀
+      ? `<button class="btn btn-primary btn-lg" style="max-width:300px" onclick="launchGame()">
+               Lancer la partie
              </button>`
-          : `<p class="subtitle">⏳ L'hôte va lancer la partie…</p>`
-        }
+      : `<p class="subtitle">L'hôte va lancer la partie…</p>`
+    }
       </div>
     </div>
   `;
@@ -518,13 +554,27 @@ function launchGame() {
   s.socket.emit('launchGame', { code: s.room.code });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // PLAYING
-// ─────────────────────────────────────────────────────────────────────────────
 function renderPlaying() {
   if (!s.currentSong) return '';
   const { song, index, total } = s.currentSong;
   const isHost = s.me.isHost;
+  const players = s.room?.players ?? [];
+
+  let playerList = `
+    <div class="card">
+      <span class="section-label">Qui a mis cette musique ?</span>
+      <div class="scroll-list">
+        ${players.map(p => `
+          <div class="player-entry" style="cursor:pointer;background:${s.guess === p.name ? '#4a7c59' : 'transparent'};padding:0.5rem;border-radius:6px" onclick="makeGuess('${esc(p.name)}')"
+                  title="${s.guess === p.name ? 'Sélectionné' : 'Cliquer pour deviner'}">
+            <span>${esc(p.name)}</span>
+                  ${s.guess === p.name ? '<span style="color:#00ff00;font-weight:bold">OK</span>' : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
 
   return `
     <div class="screen">
@@ -538,88 +588,118 @@ function renderPlaying() {
         <div class="playing-artist">${esc(song.artist)}</div>
       </div>
 
-      <div style="display:flex;flex-direction:column;align-items:center;gap:0.5rem">
-        <div class="timer-wrapper">
-          <svg class="timer-svg" viewBox="0 0 100 100">
-            <circle class="timer-track" cx="50" cy="50" r="45" />
-            <circle class="timer-fill" cx="50" cy="50" r="45" id="timer-circle"
-              style="stroke-dasharray:${CIRC};stroke-dashoffset:0" />
-          </svg>
-          <div class="timer-number" id="timer-time">${s.room?.config.timerDuration ?? 20}</div>
-        </div>
-        <button class="btn btn-secondary" id="play-btn" onclick="togglePlayPause()"
-          style="min-width:160px">▶ Lancer</button>
-      </div>
+      ${isHost
+      ? `<div style="display:flex;flex-direction:column;align-items:center;gap:0.5rem">
+           <button class="btn btn-secondary" id="play-btn" onclick="togglePlayPause()"
+             style="min-width:160px"><span>Pause</span><span class="material-symbols-outlined">pause</span></button>
+         </div>`
+      : ''}
+
+      <div id="player-list">${playerList}</div>
 
       <div class="spacer"></div>
       ${isHost
-        ? `<button class="btn btn-primary btn-lg" id="reveal-btn" onclick="revealSong()">
-             Révéler qui a ajouté ça 🎯
+      ? `<button class="btn btn-primary btn-lg" id="reveal-btn" onclick="revealSong()" ${(s.room?.players?.every(p => p.guess !== null) && s.room?.players?.length > 1) ? '' : 'disabled'
+      }>
+             <span>Révéler qui a ajouté ça</span>
+             <span class="material-symbols-outlined">visibility</span>
            </button>`
-        : `<div class="info-box" style="text-align:center">👆 Pointez du doigt la personne que vous pensez !<br>L'hôte révèle quand tout le monde est prêt.</div>`
-      }
+      : ''
+    }
     </div>
   `;
 }
 
 function togglePlayPause() {
-  if (!s.currentSong) return;
+  if (!s.currentSong || !s.me.isHost) return;
   const { song } = s.currentSong;
   if (!s.audio) s.audio = new Audio();
 
   if (s.audio.paused) {
-    if (!s.timerStarted && song.preview) s.audio.src = song.preview;
-    if (song.preview) s.audio.play().catch(() => {});
-    if (!s.timerStarted) { startTimer(); s.timerStarted = true; }
-    const btn = document.getElementById('play-btn');
-    if (btn) btn.textContent = '⏸ Pause';
+    if (song.preview && s.audio.src !== song.preview) s.audio.src = song.preview;
+    if (song.preview) s.audio.play().catch(() => { });
+    setPlayButtonState('pause', 'Pause');
   } else {
     s.audio.pause();
-    const btn = document.getElementById('play-btn');
-    if (btn) btn.textContent = '▶ Reprendre';
+    setPlayButtonState('play_arrow', 'Reprendre');
   }
 }
 
-function startTimer() {
-  const duration = s.room?.config.timerDuration ?? 20;
-  s.timerRemaining = duration;
-  updateTimerDisplay(duration);
-  s.timerInterval = setInterval(() => {
-    s.timerRemaining = Math.max(0, s.timerRemaining - 1);
-    updateTimerDisplay(duration);
-    if (s.timerRemaining === 0) {
-      clearInterval(s.timerInterval); s.timerInterval = null;
-      const circle = document.getElementById('timer-circle');
-      if (circle) circle.classList.add('urgent');
-      const btn = document.getElementById('reveal-btn');
-      if (btn) btn.classList.add('btn-pulse');
-    }
-  }, 1000);
+function makeGuess(playerName) {
+  if (!s.room) return;
+  s.guess = playerName;
+  s.socket.emit('submitGuess', { code: s.room.code, guess: playerName });
+  const playerListEl = document.querySelector('#player-list');
+  if (playerListEl) {
+    const players = s.room?.players ?? [];
+    playerListEl.innerHTML = `
+      <div class="card">
+        <span class="section-label">Qui a mis cette musique ?</span>
+        <div class="scroll-list">
+          ${players.map(p => `
+            <div class="player-entry" style="cursor:pointer;background:${s.guess === p.name ? '#4a7c59' : 'transparent'};padding:0.5rem;border-radius:6px" onclick="makeGuess('${esc(p.name)}')"
+              title="${s.guess === p.name ? 'Sélectionné' : 'Cliquer pour deviner'}">
+              <span>${esc(p.name)}</span>
+              ${s.guess === p.name ? '<span style="color:#00ff00"><span class="material-symbols-outlined">check_circle</span></span>' : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  const revealBtn = document.getElementById('reveal-btn');
+  if (revealBtn && s.room?.players?.every(p => p.guess !== null) && s.room?.players?.length > 1) {
+    revealBtn.disabled = false;
+  }
 }
 
-function updateTimerDisplay(duration) {
-  const dur    = duration ?? (s.room?.config.timerDuration ?? 20);
-  const timeEl = document.getElementById('timer-time');
-  const circEl = document.getElementById('timer-circle');
-  if (timeEl) timeEl.textContent = s.timerRemaining > 0 ? s.timerRemaining : '🎯';
-  if (circEl) circEl.style.strokeDashoffset = CIRC * (1 - s.timerRemaining / dur);
+function playCurrentSongFromStart() {
+  if (!s.me.isHost) return;
+  const preview = s.currentSong?.song?.preview;
+  if (!preview) {
+    setPlayButtonState('music_off', 'Aucun extrait');
+    return;
+  }
+  s.audio = new Audio(preview);
+  s.audio.volume = 0.8;
+  s.audio.currentTime = 0;
+  s.audio.addEventListener('ended', () => {
+    setPlayButtonState('replay', 'Rejouer');
+  });
+  s.audio.play().catch(() => {
+    setPlayButtonState('play_arrow', 'Lancer');
+  });
 }
 
 function revealSong() {
   if (!s.me.isHost || !s.room) return;
   if (s.audio) s.audio.pause();
-  clearTimer();
   s.socket.emit('revealSong', { code: s.room.code });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // REVEAL
-// ─────────────────────────────────────────────────────────────────────────────
 function renderReveal() {
   if (!s.revealData || !s.currentSong) return '';
-  const { playerName, song } = s.revealData;
-  const { index, total }     = s.currentSong;
+  const { playerName, song, results } = s.revealData;
+  const { index, total } = s.currentSong;
   const isLast = index >= total - 1;
+
+  let resultsHtml = '';
+  if (results && Array.isArray(results)) {
+    resultsHtml = `
+      <div class="card">
+        <span class="section-label">Résultats</span>
+        <div class="scroll-list">
+          ${results.map(r => `
+            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem;margin-top:0.5rem;border-radius:6px;background:${r.correct ? '#0d3b2f' : '#3b0d0d'}">
+              <span style="flex:1">${esc(r.playerName)}</span>
+              <span style="display:inline-flex;align-items:center;gap:0.35rem;font-weight: 500;color:${r.correct ? '#ffffff' : '#ffffff'}">${r.correct ? 'Bien joué !' : 'Nop :('}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
 
   return `
     <div class="screen">
@@ -631,23 +711,25 @@ function renderReveal() {
           onerror="this.src='${BLANK_IMG}'" />
         <div>
           <div style="font-weight:700;font-size:1rem">${esc(song.title)}</div>
-          <div style="color:var(--text-muted);font-size:0.82rem">${esc(song.artist)}</div>
+          <div class="ui-meta">${esc(song.artist)}</div>
         </div>
       </div>
 
       <div class="reveal-card">
         <div class="reveal-label">Cette musique a été ajoutée par</div>
         <div class="reveal-name">${esc(playerName)}</div>
-        <div style="font-size:2.2rem;margin-top:0.6rem">🎉</div>
       </div>
+
+      ${resultsHtml}
 
       <div class="spacer"></div>
       ${s.me.isHost
-        ? `<button class="btn btn-primary btn-lg" onclick="nextSong()">
-             ${isLast ? 'Voir le récap 🏁' : 'Musique suivante →'}
+      ? `<button class="btn btn-primary btn-lg" onclick="nextSong()">
+             <span>${isLast ? 'Voir le récap' : 'Musique suivante'}</span>
+             <span class="material-symbols-outlined">${isLast ? 'flag' : 'arrow_forward'}</span>
            </button>`
-        : `<div class="info-box">⏳ L'hôte passe à la suite…</div>`
-      }
+      : `<div class="info-box">L'hôte passe à la suite…</div>`
+    }
     </div>
   `;
 }
@@ -657,9 +739,7 @@ function nextSong() {
   s.socket.emit('nextSong', { code: s.room.code });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // FINISHED
-// ─────────────────────────────────────────────────────────────────────────────
 function renderFinished() {
   const items = s.recap.map(({ song, playerName }) => `
     <div class="result-item">
@@ -678,7 +758,6 @@ function renderFinished() {
 
   return `
     <div class="screen">
-      <div class="logo">🏁</div>
       <h1 class="title">Fin de partie !</h1>
       <p class="subtitle">Toutes les musiques ont été jouées</p>
       <div class="card">
@@ -687,11 +766,17 @@ function renderFinished() {
       </div>
       <div class="spacer"></div>
       ${s.me.isHost
-        ? `<button class="btn btn-primary btn-lg" onclick="restartGame()">Rejouer 🔄</button>`
-        : `<div class="info-box">⏳ L'hôte peut lancer une nouvelle partie…</div>`
-      }
+      ? `<button class="btn btn-primary btn-lg" onclick="restartGame()"><span>Rejouer</span><span class="material-symbols-outlined">refresh</span></button>`
+      : `<div class="info-box">L'hôte peut lancer une nouvelle partie…</div>`
+    }
     </div>
   `;
+}
+
+function setPlayButtonState(iconName, label) {
+  const btn = document.getElementById('play-btn');
+  if (!btn) return;
+  btn.innerHTML = `<span>${esc(label)}</span><span class="material-symbols-outlined">${iconName}</span>`;
 }
 
 function restartGame() {
@@ -699,32 +784,81 @@ function restartGame() {
   s.socket.emit('restartGame', { code: s.room.code });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+function hydrateLocalSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data?.name) s.me.name = sanitizeLocal(data.name);
+  } catch (_) { }
+}
+
+function persistSession() {
+  if (!s.room?.code || !s.me.name) return;
+  try {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+      code: s.room.code,
+      name: s.me.name,
+    }));
+  } catch (_) { }
+}
+
+function clearSession() {
+  try { sessionStorage.removeItem(SESSION_STORAGE_KEY); }
+  catch (_) { }
+}
+
+function attemptAutoReconnect() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    const code = String(saved?.code ?? '').toUpperCase();
+    const name = sanitizeLocal(saved?.name ?? '');
+    if (!code || !name) return;
+
+    s.me.name = name;
+    s.socket.emit('reconnectRoom', { code, name }, res => {
+      if (!res?.ok) {
+        clearSession();
+        return;
+      }
+
+      s.me.isHost = !!res.isHost;
+      s.room = res.room;
+      s.phase = res.phase ?? res.room?.phase ?? 'lobby';
+
+      if (res.currentSong) s.currentSong = res.currentSong;
+      if (res.reveal) s.revealData = { ...res.reveal, results: res.revealResults ?? [] };
+      if (res.recap) s.recap = res.recap;
+
+      persistSession();
+      render();
+
+      if (s.phase === 'playing') playCurrentSongFromStart();
+    });
+  } catch (_) { }
+}
+
 // iTunes SEARCH
-// ─────────────────────────────────────────────────────────────────────────────
 async function searchItunes(query) {
   const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=8&country=fr`;
-  const res  = await fetch(url);
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`iTunes ${res.status}`);
   const data = await res.json();
   return data.results.map(r => ({
-    id:      r.trackId,
-    title:   r.trackName   ?? 'Titre inconnu',
-    artist:  r.artistName  ?? '',
+    id: r.trackId,
+    title: r.trackName ?? 'Titre inconnu',
+    artist: r.artistName ?? '',
     artwork: (r.artworkUrl100 ?? '').replace('100x100bb', '300x300bb').replace('100x100', '300x300'),
-    preview: r.previewUrl  ?? null,
+    preview: r.previewUrl ?? null,
   }));
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
 function stopAudio() {
   if (s.audio) { s.audio.pause(); s.audio.src = ''; s.audio = null; }
   s.previewingId = null;
-}
-function clearTimer() {
-  if (s.timerInterval) { clearInterval(s.timerInterval); s.timerInterval = null; }
 }
 function showError(msg) {
   s.errorMsg = msg;
