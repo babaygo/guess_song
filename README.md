@@ -4,6 +4,11 @@ Jeu de soirée multijoueur : chaque joueur soumet des chansons, puis tout le mon
 
 🔗 **Demo** : https://guess-song-chi.vercel.app
 
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)
+![Express](https://img.shields.io/badge/Express-000000?style=flat&logo=express&logoColor=white)
+![Socket.IO](https://img.shields.io/badge/Socket.IO-010101?style=flat&logo=socket.io&logoColor=white)
+![Deezer](https://img.shields.io/badge/Deezer_API-EF5466?style=flat&logo=deezer&logoColor=white)
+
 ## Stack
 
 - **Backend** : Node.js + Express + Socket.IO
