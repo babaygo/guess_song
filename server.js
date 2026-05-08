@@ -161,11 +161,33 @@ io.on('connection', socket => {
     if (!room) return cb({ ok: false, error: 'Salle introuvable.' });
     cancelRoomCleanup(room);
     if (room.phase !== 'lobby') return cb({ ok: false, error: 'La partie a déjà commencé.' });
-    if (room.players.length >= 8) return cb({ ok: false, error: 'La salle est pleine (8 max).' });
+    
     const clean = sanitize(name);
     if (!clean) return cb({ ok: false, error: 'Nom invalide.' });
-    if (room.players.some(p => p.name === clean))
-      return cb({ ok: false, error: 'Ce nom est déjà pris.' });
+    
+    // Check if a player with this name already exists in the room (with no socket id)
+    let existingPlayer = room.players.find(p => p.name === clean);
+    
+    if (existingPlayer) {
+      // If the player exists and is still connected (has id), reject
+      if (existingPlayer.id && existingPlayer.id !== socket.id) {
+        return cb({ ok: false, error: 'Ce nom est déjà pris.' });
+      }
+      // If the player exists but is disconnected (no id), allow them to rejoin
+      if (!existingPlayer.id) {
+        existingPlayer.id = socket.id;
+        existingPlayer.ready = false;
+        existingPlayer.songCount = 0;
+        existingPlayer.guess = null;
+        socket.join(code);
+        io.to(code).emit('roomUpdate', roomPublic(room));
+        return cb({ ok: true, room: roomPublic(room) });
+      }
+    }
+    
+    // New player joining
+    if (room.players.length >= 8) return cb({ ok: false, error: 'La salle est pleine (8 max).' });
+    
     socket.join(code);
     addPlayer(room, socket.id, clean);
     io.to(code).emit('roomUpdate', roomPublic(room));
@@ -179,18 +201,20 @@ io.on('connection', socket => {
     const idx = room.players.findIndex(p => p.id === socket.id);
     if (idx === -1) return;
 
-    // Remove player from room
-    room.players.splice(idx, 1);
+    // Mark player as disconnected but keep their slot
+    room.players[idx].id = null;
 
     // If player was host, reassign host to another player if available
     if (room.hostId === socket.id) {
-      room.hostId = room.players.length > 0 ? room.players[0].id : null;
+      const activePlayer = room.players.find(p => p.id !== null);
+      room.hostId = activePlayer ? activePlayer.id : null;
     }
 
     socket.leave(code);
 
-    // If no players left, schedule cleanup
-    if (room.players.length === 0) {
+    // Check if any active players remain
+    const hasActive = room.players.some(p => p.id !== null);
+    if (!hasActive) {
       scheduleRoomCleanup(room);
     } else {
       io.to(code).emit('roomUpdate', roomPublic(room));
@@ -332,7 +356,7 @@ io.on('connection', socket => {
       const idx = room.players.findIndex(p => p.id === socket.id);
       if (idx === -1) continue;
 
-      // Keep slot in all phases so F5 can recover (lobby included).
+      // Keep slot in all phases so player can recover (lobby included).
       room.players[idx].id = null;
       if (room.hostId === socket.id) room.hostId = null;
       const hasActive = room.players.some(p => p.id !== null);
