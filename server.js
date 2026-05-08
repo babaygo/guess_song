@@ -172,6 +172,31 @@ io.on('connection', socket => {
     cb({ ok: true, room: roomPublic(room) });
   });
 
+  // leave room
+  socket.on('leaveRoom', ({ code }) => {
+    const room = getRoom(code);
+    if (!room) return;
+    const idx = room.players.findIndex(p => p.id === socket.id);
+    if (idx === -1) return;
+
+    // Remove player from room
+    room.players.splice(idx, 1);
+
+    // If player was host, reassign host to another player if available
+    if (room.hostId === socket.id) {
+      room.hostId = room.players.length > 0 ? room.players[0].id : null;
+    }
+
+    socket.leave(code);
+
+    // If no players left, schedule cleanup
+    if (room.players.length === 0) {
+      scheduleRoomCleanup(room);
+    } else {
+      io.to(code).emit('roomUpdate', roomPublic(room));
+    }
+  });
+
   // host updates config
   socket.on('updateConfig', ({ code, config }) => {
     const room = getRoom(code);
