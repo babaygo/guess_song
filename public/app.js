@@ -2,7 +2,6 @@
 
 // CONSTANTS 
 const BLANK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3Crect fill='%231e1e35' width='1' height='1'/%3E%3C/svg%3E";
-const SESSION_STORAGE_KEY = 'guess-song-session';
 
 // STATE 
 const s = {
@@ -10,6 +9,7 @@ const s = {
   me: { name: '', isHost: false },
   room: null,   // roomPublic from server
   phase: 'home', // home | lobby | submitting | waiting | ready | playing | reveal | finished
+  currentSessionKey: null, // for localStorage per room
 
   // Submission
   myList: [],
@@ -28,7 +28,7 @@ const s = {
   revealData: null,  // { playerName, song }
 
   // Finished
-  recap: [],
+  leaderboard: [],
 
   errorMsg: '',
 };
@@ -113,8 +113,8 @@ function bindSocketEvents() {
     render();
   });
 
-  socket.on('recap', ({ recap }) => {
-    s.recap = recap;
+  socket.on('leaderboard', ({ leaderboard }) => {
+    s.leaderboard = leaderboard;
     s.phase = 'finished';
     render();
   });
@@ -199,6 +199,14 @@ function createRoom() {
   });
 }
 
+function renderLogoutBtn() {
+  return `
+    <div class="logout-btn" onclick="leaveGame()" title="Quitter la partie">
+      <span class="material-symbols-outlined">logout</span>
+    </div>
+  `;
+}
+
 function joinRoom() {
   const name = sanitizeLocal(s.me.name);
   const code = (document.getElementById('input-code')?.value ?? '').trim().toUpperCase();
@@ -241,6 +249,7 @@ function renderLobby() {
 
   return `
     <div class="screen">
+      ${renderLogoutBtn()}
       <div class="col-center">
         <div class="col-center">
           <h2 class="ui-heading">Salle de jeu</h2>
@@ -326,6 +335,7 @@ function renderSubmitting() {
 
   return `
     <div class="screen">
+      ${renderLogoutBtn()}
       <div class="row-between">
         <div>
           <h2 class="ui-heading">${esc(s.me.name)}</h2>
@@ -501,6 +511,7 @@ function renderWaiting() {
 
   return `
     <div class="screen">
+      ${renderLogoutBtn()}
       <div class="center-screen">
         <div class="waiting-anim">...</div>
         <div>
@@ -531,6 +542,7 @@ function renderReady() {
 
   return `
     <div class="screen">
+      ${renderLogoutBtn()}
       <div class="center-screen">
         <div class="ui-kicker">Prêts</div>
         <div>
@@ -578,6 +590,7 @@ function renderPlaying() {
 
   return `
     <div class="screen">
+      ${renderLogoutBtn()}
       <p class="progress-text">Musique ${index + 1} / ${total}</p>
 
       <img class="playing-art" src="${esc(song.artwork)}" alt="${esc(song.title)}"
@@ -599,7 +612,7 @@ function renderPlaying() {
 
       <div class="spacer"></div>
       ${isHost
-      ? `<button class="btn btn-primary btn-lg" id="reveal-btn" onclick="revealSong()" ${(s.room?.players?.every(p => p.guess !== null) && s.room?.players?.length > 1) ? '' : 'disabled'
+      ? `<button class="btn btn-primary btn-lg" id="reveal-btn" onclick="revealSong()" ${(s.room?.players?.filter(p => p.id !== null).every(p => p.guess !== null) && s.room?.players?.filter(p => p.id !== null).length > 1) ? '' : 'disabled'
       }>
              <span>Révéler qui a ajouté ça</span>
              <span class="material-symbols-outlined">visibility</span>
@@ -703,6 +716,7 @@ function renderReveal() {
 
   return `
     <div class="screen">
+      ${renderLogoutBtn()}
       <p class="progress-text">Musique ${index + 1} / ${total}</p>
 
       <div class="card row" style="gap:1rem">
@@ -741,27 +755,21 @@ function nextSong() {
 
 // FINISHED
 function renderFinished() {
-  const items = s.recap.map(({ song, playerName }) => `
-    <div class="result-item">
-      <img style="width:42px;height:42px;border-radius:6px;object-fit:cover;flex-shrink:0"
-        src="${esc(song.artwork)}" alt=""
-        onerror="this.src='${BLANK_IMG}'" />
-      <div style="flex:1;min-width:0">
-        <div style="font-size:0.88rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-          ${esc(song.title)}</div>
-        <div style="font-size:0.76rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-          ${esc(song.artist)}</div>
-      </div>
-      <span class="player-tag">${esc(playerName)}</span>
+  const items = s.leaderboard.map(({ name, score }, index) => `
+    <div class="leaderboard-item ${name === s.me.name ? 'me' : ''}">
+      <div class="rank">${index + 1}</div>
+      <div class="player-name">${esc(name)}${name === s.me.name ? ' (toi)' : ''}</div>
+      <div class="score">${score} pt${score > 1 ? 's' : ''}</div>
     </div>
   `).join('');
 
   return `
     <div class="screen">
+      ${renderLogoutBtn()}
       <h1 class="title">Fin de partie !</h1>
-      <p class="subtitle">Toutes les musiques ont été jouées</p>
+      <p class="subtitle">Classement final</p>
       <div class="card">
-        <span class="section-label">Récapitulatif</span>
+        <span class="section-label">Scores</span>
         <div class="scroll-list">${items}</div>
       </div>
       <div class="spacer"></div>
@@ -786,17 +794,25 @@ function restartGame() {
 
 function hydrateLocalSession() {
   try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    // Find the most recent session key
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('guess-song-session-'));
+    if (keys.length === 0) return;
+    // Take the last one (assuming most recent)
+    const key = keys[keys.length - 1];
+    const raw = localStorage.getItem(key);
     if (!raw) return;
     const data = JSON.parse(raw);
     if (data?.name) s.me.name = sanitizeLocal(data.name);
+    s.currentSessionKey = key;
   } catch (_) { }
 }
 
 function persistSession() {
   if (!s.room?.code || !s.me.name) return;
   try {
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+    const key = 'guess-song-session-' + s.room.code;
+    s.currentSessionKey = key;
+    localStorage.setItem(key, JSON.stringify({
       code: s.room.code,
       name: s.me.name,
     }));
@@ -804,13 +820,29 @@ function persistSession() {
 }
 
 function clearSession() {
-  try { localStorage.removeItem(SESSION_STORAGE_KEY); }
-  catch (_) { }
+  try {
+    if (s.currentSessionKey) {
+      localStorage.removeItem(s.currentSessionKey);
+      s.currentSessionKey = null;
+    }
+  } catch (_) { }
+}
+
+function leaveGame() {
+  if (s.room) {
+    s.socket.emit('leaveRoom', { code: s.room.code });
+  }
+  s.phase = 'home';
+  s.room = null;
+  s.me.isHost = false;
+  clearSession();
+  render();
 }
 
 function attemptAutoReconnect() {
   try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!s.currentSessionKey) return;
+    const raw = localStorage.getItem(s.currentSessionKey);
     if (!raw) return;
     const saved = JSON.parse(raw);
     const code = String(saved?.code ?? '').toUpperCase();
