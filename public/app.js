@@ -413,7 +413,7 @@ function renderSearchResults() {
             <div class="song-artist">${esc(song.artist)}</div>
           </div>
           ${song.preview
-          ? `<button class="icon-btn is-play" onclick="togglePreview(${i})" title="${playing ? 'Pause' : 'Lecture'}"><span class="material-symbols-outlined">${playing ? 'pause' : 'play_arrow'}</s[...]
+          ? `<button class="icon-btn is-play" onclick="togglePreview(${i})" title="${playing ? 'Pause' : 'Lecture'}"><span class="material-symbols-outlined">${playing ? 'pause' : 'play_arrow'}</span></button>`
           : ''}
           <button class="icon-btn ${added ? 'is-remove' : 'is-add'}"
             onclick="toggleSong(${i})">${added ? '−' : '+'}</button>
