@@ -280,11 +280,19 @@ function renderLobby() {
             onclick="startSubmission()"
             ${players.length < 2 ? 'disabled' : ''}>
             ${players.length < 2 ? 'Attends un autre joueur…' : 'Tout le monde est là ? C\'est parti !'}
+           </button>
+           <button class="btn btn-ghost" style="width:100%;margin-top:0.5rem" onclick="leaveRoom()">
+             <span class="material-symbols-outlined">logout</span>
+             <span>Quitter la salle</span>
            </button>`
       : `<div class="center-screen" style="flex:0">
              <div class="waiting-anim">...</div>
              <p class="subtitle">En attente que l'hôte lance la partie…</p>
-           </div>`
+           </div>
+           <button class="btn btn-ghost" style="width:100%" onclick="leaveRoom()">
+             <span class="material-symbols-outlined">logout</span>
+             <span>Quitter la salle</span>
+           </button>`
     }
     </div>
   `;
@@ -324,6 +332,15 @@ async function copyRoomCode() {
 function startSubmission() {
   if (!s.me.isHost || !s.room) return;
   s.socket.emit('startSubmission', { code: s.room.code });
+}
+
+function leaveRoom() {
+  if (!s.room) return;
+  s.socket.emit('leaveRoom', { code: s.room.code });
+  clearSession();
+  s.room = null;
+  s.phase = 'home';
+  render();
 }
 
 // SUBMISSION
@@ -371,6 +388,10 @@ function renderSubmitting() {
         ${done ? '' : 'disabled'}>
         ${done ? `Valider mes musiques` : `Ajoute encore ${needed - count} musique${needed - count > 1 ? 's' : ''}`}
       </button>
+      <button class="btn btn-ghost" style="width:100%;margin-top:0.5rem" onclick="leaveRoom()">
+        <span class="material-symbols-outlined">logout</span>
+        <span>Quitter la salle</span>
+      </button>
     </div>
   `;
 }
@@ -392,7 +413,7 @@ function renderSearchResults() {
             <div class="song-artist">${esc(song.artist)}</div>
           </div>
           ${song.preview
-          ? `<button class="icon-btn is-play" onclick="togglePreview(${i})" title="${playing ? 'Pause' : 'Lecture'}"><span class="material-symbols-outlined">${playing ? 'pause' : 'play_arrow'}</span></button>`
+          ? `<button class="icon-btn is-play" onclick="togglePreview(${i})" title="${playing ? 'Pause' : 'Lecture'}"><span class="material-symbols-outlined">${playing ? 'pause' : 'play_arrow'}</s[...]
           : ''}
           <button class="icon-btn ${added ? 'is-remove' : 'is-add'}"
             onclick="toggleSong(${i})">${added ? '−' : '+'}</button>
