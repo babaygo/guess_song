@@ -48,6 +48,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  position: relative;
   animation: screenIn 0.3s ease-out;
 }
 @keyframes screenIn {
@@ -464,4 +465,51 @@ h1.title {
   color: #c4b5fd;
   text-align: center;
   line-height: 1.5;
+}
+
+.logout-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  transition: color 0.2s;
+}
+
+.logout-btn:hover {
+  color: var(--text);
+}
+
+.leaderboard-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: var(--surface-2);
+  margin-bottom: 0.5rem;
+}
+
+.leaderboard-item.me {
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.rank {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: var(--accent);
+  min-width: 2rem;
+  text-align: center;
+}
+
+.player-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.score {
+  font-weight: bold;
+  color: var(--green);
 }

@@ -900,3 +900,22 @@ function esc(str) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    s,
+    sanitizeLocal,
+    esc,
+    renderSearchResults,
+    renderMyList,
+    onSearch,
+    toggleSong,
+    removeFromList,
+    persistSession,
+    clearSession,
+    hydrateLocalSession,
+    attemptAutoReconnect,
+    leaveGame,
+    searchItunes,
+  };
+}

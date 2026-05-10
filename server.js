@@ -5,15 +5,18 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const crypto = require('crypto');
-const { sanitize, sanitizeSearchTerm, sanitizeSong, computeResults } = require('./utils');
+const { sanitize, sanitizeSearchTerm, sanitizeSong, computeResults, validateArtworkUrl, validatePreviewUrl } = require('./utils');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+let io = { on: () => { } };
+if (process.env.NODE_ENV !== 'test') {
+  io = new Server(server, { cors: { origin: '*' } });
+}
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/search', async (req, res) => {
+async function searchHandler(req, res) {
   const q = sanitizeSearchTerm(req.query.q);
   if (!q || q.length < 2) return res.json({ results: [] });
 
@@ -30,7 +33,7 @@ app.get('/api/search', async (req, res) => {
       .filter(r => r.id && r.title)
       .map(r => ({
         id: r.id,
-        title: r.title ?? 'Titre inconnu',
+        title: r.title ?? 'Titre inconnue',
         artist: r.artist?.name ?? '',
         artwork: validateArtworkUrl(r.album?.cover_medium ?? ''),
         preview: validatePreviewUrl(r.preview ?? null),
@@ -40,7 +43,9 @@ app.get('/api/search', async (req, res) => {
   } catch (_) {
     return res.status(502).json({ error: 'Erreur Deezer', results: [] });
   }
-});
+}
+
+app.get('/api/search', searchHandler);
 
 const rooms = {};
 
@@ -393,5 +398,16 @@ function shuffle(arr) {
 }
 
 // Start
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Guess the Song running on  http://localhost:${PORT}`));
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, () => console.log(`Guess the Song running on  http://localhost:${PORT}`));
+}
+
+module.exports = {
+  app,
+  searchHandler,
+  makeCode,
+  getRoom,
+  roomPublic,
+  playlistEntry,
+};
