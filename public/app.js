@@ -211,7 +211,7 @@ function renderLogoutBtn() {
 function joinRoom() {
   const name = sanitizeLocal(s.me.name);
   const code = (document.getElementById('input-code')?.value ?? '').trim().toUpperCase();
-  if (!name) { showError('Entre ton prénom !'); return; }
+  if (!name) { showError('Entre ton pseudo !'); return; }
   if (code.length < 4) { showError('Entre le code à 4 lettres.'); return; }
   s.me.name = name;
   s.errorMsg = '';
