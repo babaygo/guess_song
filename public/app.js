@@ -17,6 +17,7 @@ const s = {
   searchQuery: '',
   searchDebounce: null,
   isSearching: false,
+  searchError: null,
   previewingId: null,
 
   // Playing
@@ -60,7 +61,7 @@ function bindSocketEvents() {
             <span class="section-label">Qui a mis cette musique ?</span>
             <div class="scroll-list">
               ${players.map(p => `
-                <div class="player-entry" style="cursor:pointer;background:${s.guess === p.name ? '#4a7c59' : 'transparent'};padding:0.5rem;border-radius:6px" onclick="makeGuess('${esc(p.name)}')"
+                <div class="player-entry" data-player-name="${esc(p.name)}" style="cursor:pointer;background:${s.guess === p.name ? '#4a7c59' : 'transparent'};padding:0.5rem;border-radius:6px" onclick="makeGuess(this.dataset.playerName)"
                   title="${s.guess === p.name ? 'Sélectionné' : 'Cliquer pour deviner'}">
                   <span>${esc(p.name)}</span>
                   ${s.guess === p.name ? '<span style="color:#00ff00"><span class="material-symbols-outlined">check_circle</span></span>' : ''}
@@ -400,6 +401,9 @@ function renderSearchResults() {
   if (s.isSearching) {
     return `<div class="search-hint"><div class="loading-dots"><span></span><span></span><span></span></div></div>`;
   }
+  if (s.searchError) {
+    return `<div class="search-hint" style="color:#ff6b6b">${esc(s.searchError)}</div>`;
+  }
   if (s.searchResults.length > 0) {
     return s.searchResults.map((song, i) => {
       const added = s.myList.some(x => x.id === song.id);
@@ -444,15 +448,23 @@ function onSearch(value) {
   clearTimeout(s.searchDebounce);
   if (s.searchQuery.length < 2) {
     s.searchResults = [];
+    s.searchError = null;
     s.isSearching = false;
     refreshSearchUI();
     return;
   }
   s.isSearching = true;
+  s.searchError = null;
   refreshSearchUI();
   s.searchDebounce = setTimeout(async () => {
-    try { s.searchResults = await searchItunes(s.searchQuery); }
-    catch (_) { s.searchResults = []; }
+    try { 
+      s.searchResults = await searchItunes(s.searchQuery);
+      s.searchError = null;
+    }
+    catch (_) { 
+      s.searchResults = []; 
+      s.searchError = 'Erreur réseau. Réessayez.';
+    }
     s.isSearching = false;
     refreshSearchUI();
   }, 500);
@@ -592,14 +604,14 @@ function renderPlaying() {
   if (!s.currentSong) return '';
   const { song, index, total } = s.currentSong;
   const isHost = s.me.isHost;
-  const players = s.room?.players ?? [];
+  const activePlayers = (s.room?.players ?? []).filter(p => p.id !== null);
 
   let playerList = `
     <div class="card">
       <span class="section-label">Qui a mis cette musique ?</span>
       <div class="scroll-list">
-        ${players.map(p => `
-          <div class="player-entry" style="cursor:pointer;background:${s.guess === p.name ? '#4a7c59' : 'transparent'};padding:0.5rem;border-radius:6px" onclick="makeGuess('${esc(p.name)}')"
+        ${activePlayers.map(p => `
+          <div class="player-entry" data-player-name="${esc(p.name)}" style="cursor:pointer;background:${s.guess === p.name ? '#4a7c59' : 'transparent'};padding:0.5rem;border-radius:6px" onclick="makeGuess(this.dataset.playerName)"
                   title="${s.guess === p.name ? 'Sélectionné' : 'Cliquer pour deviner'}">
             <span>${esc(p.name)}</span>
                   ${s.guess === p.name ? '<span style="color:#00ff00;font-weight:bold">OK</span>' : ''}
@@ -665,13 +677,13 @@ function makeGuess(playerName) {
   s.socket.emit('submitGuess', { code: s.room.code, guess: playerName });
   const playerListEl = document.querySelector('#player-list');
   if (playerListEl) {
-    const players = s.room?.players ?? [];
+    const activePlayers = (s.room?.players ?? []).filter(p => p.id !== null);
     playerListEl.innerHTML = `
       <div class="card">
         <span class="section-label">Qui a mis cette musique ?</span>
         <div class="scroll-list">
-          ${players.map(p => `
-            <div class="player-entry" style="cursor:pointer;background:${s.guess === p.name ? '#4a7c59' : 'transparent'};padding:0.5rem;border-radius:6px" onclick="makeGuess('${esc(p.name)}')"
+          ${activePlayers.map(p => `
+            <div class="player-entry" data-player-name="${esc(p.name)}" style="cursor:pointer;background:${s.guess === p.name ? '#4a7c59' : 'transparent'};padding:0.5rem;border-radius:6px" onclick="makeGuess(this.dataset.playerName)"
               title="${s.guess === p.name ? 'Sélectionné' : 'Cliquer pour deviner'}">
               <span>${esc(p.name)}</span>
               ${s.guess === p.name ? '<span style="color:#00ff00"><span class="material-symbols-outlined">check_circle</span></span>' : ''}
@@ -818,8 +830,10 @@ function hydrateLocalSession() {
     // Find the most recent session key
     const keys = Object.keys(localStorage).filter(k => k.startsWith('guess-song-session-'));
     if (keys.length === 0) return;
-    // Take the last one (assuming most recent)
-    const key = keys[keys.length - 1];
+    const key = keys
+      .map(k => ({ k, ts: JSON.parse(localStorage.getItem(k) || '{}')?.ts ?? 0 }))
+      .sort((a, b) => b.ts - a.ts)[0]?.k;
+    if (!key) return;
     const raw = localStorage.getItem(key);
     if (!raw) return;
     const data = JSON.parse(raw);
@@ -836,6 +850,7 @@ function persistSession() {
     localStorage.setItem(key, JSON.stringify({
       code: s.room.code,
       name: s.me.name,
+      ts: Date.now(),
     }));
   } catch (_) { }
 }

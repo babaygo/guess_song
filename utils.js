@@ -34,11 +34,9 @@ function validatePreviewUrl(url) {
   try {
     const u = new URL(String(url ?? ''));
     if (u.protocol !== 'https:') return null;
-    if (!u.hostname.endsWith('dzcdn.net') && !u.hostname.endsWith('preview.mp3')) return null;
+    if (!u.hostname.endsWith('dzcdn.net')) return null;
     return u.href;
-  } catch (_) {
-    return null;
-  }
+  } catch (_) { return null; }
 }
 
 function computeResults(room) {

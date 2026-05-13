@@ -49,8 +49,11 @@ app.get('/api/search', searchHandler);
 
 const rooms = {};
 
-function makeCode() {
-  return crypto.randomBytes(2).toString('hex').toUpperCase(); // e.g. "A3F2"
+function generateUniqueRoomCode() {
+  let code;
+  do { code = crypto.randomBytes(2).toString('hex').toUpperCase(); }
+  while (rooms[code]);
+  return code;
 }
 
 function getRoom(code) { return rooms[code]; }
@@ -80,7 +83,7 @@ io.on('connection', socket => {
 
   // create room
   socket.on('createRoom', ({ name, config }, cb) => {
-    const code = makeCode();
+    const code = generateUniqueRoomCode();
     rooms[code] = {
       code,
       hostId: socket.id,
@@ -166,7 +169,6 @@ io.on('connection', socket => {
     const room = getRoom(code?.toUpperCase());
     if (!room) return cb({ ok: false, error: 'Salle introuvable.' });
     cancelRoomCleanup(room);
-    if (room.phase !== 'lobby') return cb({ ok: false, error: 'La partie a déjà commencé.' });
     
     const clean = sanitize(name);
     if (!clean) return cb({ ok: false, error: 'Nom invalide.' });
@@ -187,11 +189,45 @@ io.on('connection', socket => {
         existingPlayer.guess = null;
         socket.join(code);
         io.to(code).emit('roomUpdate', roomPublic(room));
-        return cb({ ok: true, room: roomPublic(room) });
+
+        const payload = {
+          ok: true,
+          room: roomPublic(room),
+          isHost: room.hostId === socket.id,
+          phase: room.phase,
+        };
+
+        if (room.phase === 'playing' && room.currentSong) {
+          payload.currentSong = {
+            index: room.playedCount ?? 0,
+            total: room.playlist.length,
+            song: room.currentSong.song,
+          };
+        }
+
+        if (room.phase === 'reveal' && room.currentSong) {
+          payload.currentSong = {
+            index: room.playedCount ?? 0,
+            total: room.playlist.length,
+            song: room.currentSong.song,
+          };
+          payload.reveal = {
+            playerName: room.currentSong.playerName,
+            song: room.currentSong.song,
+          };
+          payload.revealResults = computeResults(room);
+        }
+
+        if (room.phase === 'finished') {
+          payload.recap = room.playlist.map(e => ({ song: e.song, playerName: e.playerName }));
+        }
+
+        return cb(payload);
       }
     }
     
-    // New player joining
+    // New player joining - only allowed in lobby
+    if (room.phase !== 'lobby') return cb({ ok: false, error: 'La partie a déjà commencé.' });
     if (room.players.length >= 8) return cb({ ok: false, error: 'La salle est pleine (8 max).' });
     
     socket.join(code);
@@ -207,20 +243,20 @@ io.on('connection', socket => {
     const idx = room.players.findIndex(p => p.id === socket.id);
     if (idx === -1) return;
 
-    // Mark player as disconnected but keep their slot
+    const wasHost = room.hostId === socket.id;
     room.players[idx].id = null;
 
-    // If player was host, reassign host to another player if available
-    if (room.hostId === socket.id) {
-      const activePlayer = room.players.find(p => p.id !== null);
-      room.hostId = activePlayer ? activePlayer.id : null;
+    if (wasHost) {
+      const activePlayers = room.players.filter(p => p.id !== null);
+      room.hostId = activePlayers.length > 0
+        ? activePlayers[activePlayers.length - 1].id
+        : null;
     }
 
     socket.leave(code);
 
-    // Check if any active players remain
-    const hasActive = room.players.some(p => p.id !== null);
-    if (!hasActive) {
+    const hasActivePlayers = room.players.some(p => p.id !== null);
+    if (!hasActivePlayers) {
       scheduleRoomCleanup(room);
     } else {
       io.to(code).emit('roomUpdate', roomPublic(room));
@@ -253,6 +289,7 @@ io.on('connection', socket => {
     if (!room || room.phase !== 'submitting') return cb?.({ ok: false });
     const player = room.players.find(p => p.id === socket.id);
     if (!player) return cb?.({ ok: false });
+    if (player.ready) return cb?.({ ok: false, error: 'Déjà soumis.' });
 
     const limit = room.config.songsPerPlayer;
     const valid = (Array.isArray(songs) ? songs : []).slice(0, limit).map(sanitizeSong).filter(Boolean);
@@ -366,30 +403,6 @@ io.on('connection', socket => {
     io.to(code).emit('roomUpdate', roomPublic(room));
   });
 
-  // leave room
-  socket.on('leaveRoom', ({ code }) => {
-    const room = getRoom(code);
-    if (!room) return;
-    const idx = room.players.findIndex(p => p.id === socket.id);
-    if (idx === -1) return;
-
-    const wasHost = room.hostId === socket.id;
-    // Mark as absent instead of removing
-    room.players[idx].id = null;
-    if (wasHost && room.players.length > 0) {
-      // Assign host to the last active player
-      const activePlayers = room.players.filter(p => p.id !== null);
-      if (activePlayers.length > 0) {
-        room.hostId = activePlayers[activePlayers.length - 1].id;
-      } else {
-        room.hostId = null;
-      }
-    }
-
-    socket.leave(code);
-    io.to(code).emit('roomUpdate', roomPublic(room));
-  });
-
   // disconnect
   socket.on('disconnect', () => {
     for (const code of Object.keys(rooms)) {
@@ -455,7 +468,7 @@ if (require.main === module) {
 module.exports = {
   app,
   searchHandler,
-  makeCode,
+  generateUniqueRoomCode,
   getRoom,
   roomPublic,
   playlistEntry,
