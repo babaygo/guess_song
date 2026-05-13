@@ -156,7 +156,7 @@ function renderHome() {
       <div class="card">
         <span class="section-label">Mon pseudo</span>
         <input class="input" id="input-name" type="text"
-          placeholder="ex: Simon" maxlength="20"
+          placeholder="ex: John Doe" maxlength="20"
           value="${esc(s.me.name)}"
           oninput="s.me.name = this.value.trim()" />
       </div>
@@ -187,7 +187,7 @@ function renderHome() {
 
 function createRoom() {
   const name = sanitizeLocal(s.me.name);
-  if (!name) { showError('Entre ton prénom !'); return; }
+  if (!name) { showError('Entre ton pseudo !'); return; }
   s.me.name = name;
   s.errorMsg = '';
   s.socket.emit('createRoom', { name, config: { songsPerPlayer: 4 } }, res => {
