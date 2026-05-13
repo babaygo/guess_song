@@ -90,7 +90,8 @@ test('persistSession stores the current room and name', () => {
   s.room = { code: 'TEST' };
   app.persistSession();
   expect(s.currentSessionKey).toBe('guess-song-session-TEST');
-  expect(localStorage.getItem('guess-song-session-TEST')).toBe(JSON.stringify({ code: 'TEST', name: 'Alice' }));
+  const stored = JSON.parse(localStorage.getItem('guess-song-session-TEST'));
+  expect(stored).toEqual({ code: 'TEST', name: 'Alice', ts: expect.any(Number) });
 });
 
 test('hydrateLocalSession loads saved session data', () => {
