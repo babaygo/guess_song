@@ -73,12 +73,17 @@ describe('Server route helpers', () => {
       code: 'ABCD',
       phase: 'playing',
       config: { songsPerPlayer: 4 },
+      hostId: 'a',
+      hostName: 'Alice',
       players: [
         { id: 'a', name: 'Alice' },
         { id: null, name: 'Bob' },
       ],
     };
-    expect(roomPublic(room).players).toEqual(room.players);
+    const publicRoom = roomPublic(room);
+    expect(publicRoom.players).toEqual(room.players);
+    expect(publicRoom.hostId).toBe('a');
+    expect(publicRoom.hostName).toBe('Alice');
   });
 
   test('playlistEntry returns correct index, total and song', () => {

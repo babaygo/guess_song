@@ -49,8 +49,8 @@ function bindSocketEvents() {
 
   socket.on('roomUpdate', room => {
     s.room = room;
-    // Sync config if we're host
-    if (s.me.isHost) s.me.isHost = true;
+    // Track current host based on the latest server state.
+    s.me.isHost = !!(s.room.hostId && s.socket?.id && s.room.hostId === s.socket.id);
     // Update UI if in playing phase (for guess updates)
     if (s.phase === 'playing') {
       const playerListEl = document.querySelector('#player-list');

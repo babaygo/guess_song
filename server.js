@@ -63,6 +63,8 @@ function roomPublic(room) {
     code: room.code,
     phase: room.phase,
     config: room.config,
+    hostId: room.hostId,
+    hostName: room.hostName,
     // In lobby, hide disconnected slots; in active phases keep them visible.
     players: room.phase === 'lobby'
       ? room.players.filter(p => p.id !== null)
@@ -248,9 +250,14 @@ io.on('connection', socket => {
 
     if (wasHost) {
       const activePlayers = room.players.filter(p => p.id !== null);
-      room.hostId = activePlayers.length > 0
-        ? activePlayers[activePlayers.length - 1].id
-        : null;
+      if (activePlayers.length > 0) {
+        const newHost = activePlayers[activePlayers.length - 1];
+        room.hostId = newHost.id;
+        room.hostName = newHost.name;
+      } else {
+        room.hostId = null;
+        room.hostName = null;
+      }
     }
 
     socket.leave(code);
@@ -412,7 +419,17 @@ io.on('connection', socket => {
 
       // Keep slot in all phases so player can recover (lobby included).
       room.players[idx].id = null;
-      if (room.hostId === socket.id) room.hostId = null;
+      if (room.hostId === socket.id) {
+        const activePlayers = room.players.filter(p => p.id !== null);
+        if (activePlayers.length > 0) {
+          const newHost = activePlayers[activePlayers.length - 1];
+          room.hostId = newHost.id;
+          room.hostName = newHost.name;
+        } else {
+          room.hostId = null;
+          room.hostName = null;
+        }
+      }
       const hasActive = room.players.some(p => p.id !== null);
       if (!hasActive) scheduleRoomCleanup(room);
 
