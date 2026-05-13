@@ -121,12 +121,12 @@ test('toggleSong adds and removes a song from myList', () => {
   expect(s.myList).toHaveLength(0);
 });
 
-test('searchItunes returns decoded JSON results when fetch succeeds', async () => {
+test('search returns decoded JSON results when fetch succeeds', async () => {
   global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ id: 1 }] }) });
-  await expect(app.searchItunes('hello')).resolves.toEqual([{ id: 1 }]);
+  await expect(app.search('hello')).resolves.toEqual([{ id: 1 }]);
 });
 
-test('searchItunes throws when fetch response is not ok', async () => {
+test('search throws when fetch response is not ok', async () => {
   global.fetch.mockResolvedValueOnce({ ok: false, status: 500 });
-  await expect(app.searchItunes('hello')).rejects.toThrow('search 500');
+  await expect(app.search('hello')).rejects.toThrow('search 500');
 });

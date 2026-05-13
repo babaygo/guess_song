@@ -250,7 +250,6 @@ function renderLobby() {
 
   return `
     <div class="screen">
-      ${renderLogoutBtn()}
       <div class="col-center">
         <div class="col-center">
           <h2 class="ui-heading">Salle de jeu</h2>
@@ -353,7 +352,6 @@ function renderSubmitting() {
 
   return `
     <div class="screen">
-      ${renderLogoutBtn()}
       <div class="row-between">
         <div>
           <h2 class="ui-heading">${esc(s.me.name)}</h2>
@@ -458,7 +456,7 @@ function onSearch(value) {
   refreshSearchUI();
   s.searchDebounce = setTimeout(async () => {
     try { 
-      s.searchResults = await searchItunes(s.searchQuery);
+      s.searchResults = await search(s.searchQuery);
       s.searchError = null;
     }
     catch (_) { 
@@ -909,7 +907,7 @@ function attemptAutoReconnect() {
 }
 
 // SEARCH
-async function searchItunes(query) {
+async function search(query) {
   const url = `/api/search?q=${encodeURIComponent(query)}&limit=8`;
   const res = await fetch(url, {
     headers: { Accept: 'application/json' },
@@ -952,6 +950,6 @@ if (typeof module !== 'undefined' && module.exports) {
     hydrateLocalSession,
     attemptAutoReconnect,
     leaveGame,
-    searchItunes,
+    search,
   };
 }

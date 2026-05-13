@@ -48,4 +48,4 @@ function computeResults(room) {
   }));
 }
 
-module.exports = { sanitize, sanitizeSearchTerm, sanitizeSong, computeResults };
+module.exports = { sanitize, sanitizeSearchTerm, sanitizeSong, computeResults, validateArtworkUrl, validatePreviewUrl };

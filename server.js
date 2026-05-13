@@ -40,8 +40,8 @@ async function searchHandler(req, res) {
       }));
     res.set('Cache-Control', 'public, max-age=60');
     return res.json({ results });
-  } catch (_) {
-    return res.status(502).json({ error: 'Erreur Deezer', results: [] });
+  } catch (err) {
+    return res.status(500).json({ error: 'Erreur serveur: ' + err.message, results: [] });
   }
 }
 
