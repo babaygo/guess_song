@@ -1,4 +1,5 @@
 import type { Server, Socket } from "socket.io";
+import { checkRateLimit } from "./rateLimit.js";
 import { sanitize } from "./sanitize.js";
 import {
   cancelRoomCleanup,
@@ -24,9 +25,38 @@ import {
 
 type Callback = (payload: Record<string, unknown>) => void;
 
+const DEFAULT_SOCKET_LIMIT = { max: 300, windowMs: 10000 };
+const SOCKET_LIMITS: Record<string, { max: number; windowMs: number }> = {
+  createRoom: { max: 20, windowMs: 60000 },
+  joinRoom: { max: 80, windowMs: 60000 },
+  reconnectRoom: { max: 80, windowMs: 60000 },
+  submitGuess: { max: 120, windowMs: 10000 },
+  submitSongs: { max: 40, windowMs: 60000 },
+};
+const MAX_ACTIVE_ROOMS = Number(process.env.MAX_ACTIVE_ROOMS) || 5000;
+
 export function registerSocketHandlers(io: Server) {
   io.on("connection", (socket) => {
+    socket.use((packet, next) => {
+      const event = String(packet[0] ?? "");
+      const limit = SOCKET_LIMITS[event] ?? DEFAULT_SOCKET_LIMIT;
+      const address = socket.handshake.address || socket.id;
+
+      if (checkRateLimit(`${address}:${event}`, limit)) {
+        next();
+        return;
+      }
+
+      const ack = packet.at(-1);
+      if (typeof ack === "function") {
+        ack({ ok: false, error: "Trop de requetes. Reessaie dans quelques instants." });
+      }
+    });
+
     socket.on("createRoom", ({ name, config } = {}, cb?: Callback) => {
+      if (rooms.size >= MAX_ACTIVE_ROOMS)
+        return cb?.({ ok: false, error: "Trop de salles actives. Reessaie plus tard." });
+
       const clean = sanitize(name);
       if (!clean) return cb?.({ ok: false, error: "Nom invalide." });
 

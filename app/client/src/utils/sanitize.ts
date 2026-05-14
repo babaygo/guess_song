@@ -3,5 +3,5 @@ export function sanitizeName(value: string) {
 }
 
 export function sanitizeCode(value: string) {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
 }

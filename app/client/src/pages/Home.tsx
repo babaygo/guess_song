@@ -55,9 +55,9 @@ export function Home({ createRoom, error, joinCode, joinRoom, name, setJoinCode,
           <input
             className="input code-input"
             id="input-code"
-            maxLength={4}
+            maxLength={6}
             onChange={(event) => setJoinCode(sanitizeCode(event.target.value))}
-            placeholder="ex: A3F2"
+            placeholder="ex: A3F29B"
             value={joinCode}
           />
           <button className="btn btn-primary" type="submit">
