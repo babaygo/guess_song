@@ -1,32 +1,22 @@
 {
-  "name": "guess-the-song",
+  "name": "guess_song",
   "version": "1.0.0",
-  "description": "Multiplayer party game – guess who added which song",
-  "main": "server.js",
+  "description": "",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "npx nodemon server.js",
-    "test": "jest"
-  },
-  "dependencies": {
-    "express": "^4.19.2",
-    "socket.io": "^4.7.5"
-  },
-  "devDependencies": {
-    "jest": "^30.4.2",
-    "jest-environment-jsdom": "^30.4.1",
-    "jsdom": "^29.1.1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/babaygo/guess_song.git"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev:client": "pnpm --filter client dev",
+    "dev:server": "pnpm --filter server dev"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/babaygo/guess_song/issues"
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.1.2",
+      "onFail": "download"
+    }
   },
-  "homepage": "https://github.com/babaygo/guess_song#readme"
+  "type": "module"
 }
