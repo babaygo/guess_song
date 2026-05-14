@@ -4,6 +4,9 @@ import type { Player, PublicRoom, Room, RoomConfig, Song } from "./types.js";
 
 const ROOM_RECONNECT_GRACE_MS = 120000;
 const ROOM_CODE_BYTES = 3;
+const MIN_SONGS_PER_PLAYER = 2;
+const MAX_SONGS_PER_PLAYER = 6;
+const DEFAULT_SONGS_PER_PLAYER = 4;
 
 export const rooms = new Map<string, Room>();
 
@@ -27,7 +30,7 @@ export function createRoom(hostId: string, name: unknown, config?: Partial<RoomC
     hostId,
     hostName,
     phase: "lobby",
-    config: { songsPerPlayer: Number(config?.songsPerPlayer) || 4 },
+    config: { songsPerPlayer: normalizeSongsPerPlayer(config?.songsPerPlayer) },
     players: [],
     submissions: [],
     playlist: [],
@@ -113,7 +116,7 @@ export function cancelRoomCleanup(room: Room) {
 }
 
 export function updateRoomConfig(room: Room, config?: Partial<RoomConfig>) {
-  room.config.songsPerPlayer = Math.min(6, Math.max(2, Number(config?.songsPerPlayer) || 4));
+  room.config.songsPerPlayer = normalizeSongsPerPlayer(config?.songsPerPlayer);
 }
 
 export function startSubmission(room: Room) {
@@ -238,4 +241,11 @@ function shuffle<T>(items: T[]) {
     [items[i], items[j]] = [items[j] as T, items[i] as T];
   }
   return items;
+}
+
+function normalizeSongsPerPlayer(value: unknown) {
+  return Math.min(
+    MAX_SONGS_PER_PLAYER,
+    Math.max(MIN_SONGS_PER_PLAYER, Number(value) || DEFAULT_SONGS_PER_PLAYER),
+  );
 }

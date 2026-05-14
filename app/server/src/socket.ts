@@ -1,5 +1,5 @@
 import type { Server, Socket } from "socket.io";
-import { checkRateLimit } from "./rateLimit.js";
+import { RATE_LIMIT_MESSAGE, checkRateLimit } from "./rateLimit.js";
 import { sanitize } from "./sanitize.js";
 import {
   cancelRoomCleanup,
@@ -34,6 +34,7 @@ const SOCKET_LIMITS: Record<string, { max: number; windowMs: number }> = {
   submitSongs: { max: 40, windowMs: 60000 },
 };
 const MAX_ACTIVE_ROOMS = Number(process.env.MAX_ACTIVE_ROOMS) || 5000;
+const MAX_PLAYERS_PER_ROOM = 8;
 
 export function registerSocketHandlers(io: Server) {
   io.on("connection", (socket) => {
@@ -49,7 +50,7 @@ export function registerSocketHandlers(io: Server) {
 
       const ack = packet.at(-1);
       if (typeof ack === "function") {
-        ack({ ok: false, error: "Trop de requetes. Reessaie dans quelques instants." });
+        ack({ ok: false, error: RATE_LIMIT_MESSAGE });
       }
     });
 
@@ -77,10 +78,10 @@ export function registerSocketHandlers(io: Server) {
         return cb?.({ ok: false, error: "La partie a deja commence." });
       }
       if (
-        room.players.length >= 8 &&
+        room.players.length >= MAX_PLAYERS_PER_ROOM &&
         !room.players.some((player) => player.name === clean)
       ) {
-        return cb?.({ ok: false, error: "La salle est pleine (8 max)." });
+        return cb?.({ ok: false, error: `La salle est pleine (${MAX_PLAYERS_PER_ROOM} max).` });
       }
 
       cancelRoomCleanup(room);

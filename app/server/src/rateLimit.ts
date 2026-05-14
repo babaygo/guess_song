@@ -11,6 +11,8 @@ type Bucket = {
   resetAt: number;
 };
 
+export const RATE_LIMIT_MESSAGE = "Trop de requetes. Reessaie dans quelques instants.";
+
 const buckets = new Map<string, Bucket>();
 
 export function checkRateLimit(key: string, options: RateLimitOptions) {
@@ -37,7 +39,7 @@ export function rateLimit(options: RateLimitOptions): RequestHandler {
     }
 
     res.status(429).json({
-      error: options.message ?? "Trop de requetes. Reessaie dans quelques instants.",
+      error: options.message ?? RATE_LIMIT_MESSAGE,
       results: [],
     });
   };
