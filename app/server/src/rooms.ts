@@ -42,6 +42,11 @@ export function createRoom(hostId: string, name: unknown, config?: Partial<RoomC
 }
 
 export function roomPublic(room: Room): PublicRoom {
+  const players =
+    room.phase === "lobby"
+      ? room.players.filter((player) => player.id !== null)
+      : room.players.map((player) => ({ ...player, guess: null }));
+
   return {
     code: room.code,
     hostId: room.hostId,
@@ -49,7 +54,7 @@ export function roomPublic(room: Room): PublicRoom {
     phase: room.phase,
     config: room.config,
     playedCount: room.playedCount,
-    players: room.phase === "lobby" ? room.players.filter((player) => player.id !== null) : room.players,
+    players,
   };
 }
 
@@ -142,13 +147,14 @@ export function submitSongs(room: Room, socketId: string, songs: unknown[]) {
   player.ready = true;
   player.songCount = valid.length;
 
-  if (room.players.every((candidate) => candidate.ready)) {
+  const activePlayers = room.players.filter((candidate) => candidate.id !== null);
+  if (activePlayers.length > 0 && activePlayers.every((candidate) => candidate.ready)) {
     room.phase = "ready";
     room.playlist = [...room.submissions];
     room.remainingPlaylist = shuffle([...room.submissions]);
   }
 
-  return { ok: true as const };
+  return { ok: true as const, phase: room.phase };
 }
 
 export function launchGame(room: Room) {
@@ -178,7 +184,7 @@ export function nextSong(room: Room) {
   room.playedCount += 1;
   if (room.playedCount >= room.playlist.length) {
     room.phase = "finished";
-    return;
+    return room.phase;
   }
 
   room.phase = "playing";
@@ -186,6 +192,7 @@ export function nextSong(room: Room) {
   room.players.forEach((player) => {
     player.guess = null;
   });
+  return room.phase;
 }
 
 export function restartRoom(room: Room) {
