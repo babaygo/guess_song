@@ -2,20 +2,29 @@
   "name": "guess-the-song",
   "version": "1.0.0",
   "description": "Multiplayer party game – guess who added which song",
-  "main": "server.js",
+  "type": "module",
+  "main": "src/server/index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "npx nodemon server.js",
+    "start": "node src/server/index.js",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npx nodemon src/server/index.js",
+    "dev:client": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "test": "jest"
   },
   "dependencies": {
     "express": "^4.19.2",
-    "socket.io": "^4.7.5"
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
+    "@vitejs/plugin-legacy": "^8.0.1",
+    "concurrently": "^9.2.1",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
-    "jsdom": "^29.1.1"
+    "jsdom": "^29.1.1",
+    "vite": "^8.0.12"
   },
   "repository": {
     "type": "git",
@@ -24,7 +33,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/babaygo/guess_song/issues"
   },
