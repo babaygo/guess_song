@@ -1,4 +1,4 @@
-import type { Song } from "./types.js";
+import type { Song } from "../types/types.js";
 
 export function sanitize(value: unknown, maxLength = 20) {
   return String(value ?? "").trim().replace(/[<>&"']/g, "").slice(0, maxLength);

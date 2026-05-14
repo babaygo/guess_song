@@ -2,14 +2,14 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
-import { searchHandler } from "./deezer.js";
-import { rateLimit } from "./rateLimit.js";
+import { env } from "./config/env.js";
+import { searchHandler } from "./deezer/deezer.js";
+import { rateLimit } from "./utils/rateLimit.js";
 import { registerSocketHandlers } from "./socket.js";
 
 const app = express();
-const clientOrigin = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
 
-app.use(cors({ origin: clientOrigin }));
+app.use(cors({ origin: env.CLIENT_ORIGIN }));
 app.get(
   "/api/search",
   rateLimit({ max: 240, windowMs: 60000 }),
@@ -20,13 +20,12 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: clientOrigin,
+    origin: env.CLIENT_ORIGIN,
   },
 });
 
 registerSocketHandlers(io);
 
-const port = Number(process.env.PORT) || 3000;
-server.listen(port, () => {
-  console.log(`Guess the Song server listening on ${port}`);
+server.listen(env.PORT, () => {
+  console.log(`Guess the Song server listening on ${env.PORT}`);
 });

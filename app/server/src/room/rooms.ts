@@ -1,6 +1,7 @@
 import crypto from "crypto";
-import { sanitize, sanitizeSong } from "./sanitize.js";
-import type { Player, PublicRoom, Room, RoomConfig, Song } from "./types.js";
+import { roomStore } from "./roomStore.js";
+import { sanitize, sanitizeSong } from "../utils/sanitize.js";
+import type { Player, Room, RoomConfig, Song } from "../types/types.js";
 
 const ROOM_RECONNECT_GRACE_MS = 120000;
 const ROOM_CODE_BYTES = 3;
@@ -8,18 +9,16 @@ const MIN_SONGS_PER_PLAYER = 2;
 const MAX_SONGS_PER_PLAYER = 6;
 const DEFAULT_SONGS_PER_PLAYER = 4;
 
-export const rooms = new Map<string, Room>();
-
 export function generateUniqueRoomCode() {
   let code = "";
   do {
     code = crypto.randomBytes(ROOM_CODE_BYTES).toString("hex").toUpperCase();
-  } while (rooms.has(code));
+  } while (roomStore.has(code));
   return code;
 }
 
 export function getRoom(code: unknown) {
-  return rooms.get(String(code ?? "").toUpperCase());
+  return roomStore.get(code);
 }
 
 export function createRoom(hostId: string, name: unknown, config?: Partial<RoomConfig>) {
@@ -41,25 +40,8 @@ export function createRoom(hostId: string, name: unknown, config?: Partial<RoomC
   };
 
   addPlayer(room, hostId, hostName);
-  rooms.set(code, room);
+  roomStore.set(room);
   return room;
-}
-
-export function roomPublic(room: Room): PublicRoom {
-  const players =
-    room.phase === "lobby"
-      ? room.players.filter((player) => player.id !== null)
-      : room.players.map((player) => ({ ...player, guess: null }));
-
-  return {
-    code: room.code,
-    hostId: room.hostId,
-    hostName: room.hostName,
-    phase: room.phase,
-    config: room.config,
-    playedCount: room.playedCount,
-    players,
-  };
 }
 
 export function addPlayer(room: Room, id: string, name: string) {
@@ -104,8 +86,8 @@ export function hasActivePlayers(room: Room) {
 export function scheduleRoomCleanup(room: Room) {
   cancelRoomCleanup(room);
   room.cleanupTimer = setTimeout(() => {
-    const current = rooms.get(room.code);
-    if (current && !hasActivePlayers(current)) rooms.delete(room.code);
+    const current = roomStore.get(room.code);
+    if (current && !hasActivePlayers(current)) roomStore.delete(room.code);
   }, ROOM_RECONNECT_GRACE_MS);
 }
 
