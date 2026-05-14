@@ -85,10 +85,25 @@ export class SocketService {
     this.socket.emit('reconnectRoom', { code, name }, callback);
   }
 
-  submitSongs(songs) {
+  updateConfig(code, config) {
+    this.socket.emit('updateConfig', { code, config });
+  }
+
+  startSubmission(code) {
+    this.socket.emit('startGame', { code });
+  }
+
+  launchGame(code = store.getState().room?.code) {
+    if (!code) return;
+    this.socket.emit('launchGame', { code });
+  }
+
+  submitSongs(codeOrSongs, maybeSongs, callback) {
     const room = store.getState().room;
     if (!room) return;
-    this.socket.emit('submitSongs', { code: room.code, songs });
+    const code = Array.isArray(codeOrSongs) ? room.code : codeOrSongs;
+    const songs = Array.isArray(codeOrSongs) ? codeOrSongs : maybeSongs;
+    this.socket.emit('submitSongs', { code, songs }, callback);
   }
 
   startGame() {
@@ -97,29 +112,36 @@ export class SocketService {
     this.socket.emit('startGame', { code: room.code });
   }
 
-  makeGuess(guess) {
+  makeGuess(codeOrGuess, maybeGuess) {
     const room = store.getState().room;
     if (!room) return;
+    const code = maybeGuess === undefined ? room.code : codeOrGuess;
+    const guess = maybeGuess === undefined ? codeOrGuess : maybeGuess;
     actions.setGuess(guess);
-    this.socket.emit('guess', { code: room.code, guess });
+    this.socket.emit('guess', { code, guess });
   }
 
-  revealSong() {
+  revealSong(code = store.getState().room?.code) {
     const room = store.getState().room;
-    if (!room) return;
-    this.socket.emit('revealSong', { code: room.code });
+    if (!room || !code) return;
+    this.socket.emit('revealSong', { code });
   }
 
-  nextSong() {
+  nextSong(code = store.getState().room?.code) {
     const room = store.getState().room;
-    if (!room) return;
-    this.socket.emit('nextSong', { code: room.code });
+    if (!room || !code) return;
+    this.socket.emit('nextSong', { code });
   }
 
-  leaveRoom() {
+  restartGame(code = store.getState().room?.code) {
+    if (!code) return;
+    this.socket.emit('startGame', { code });
+  }
+
+  leaveRoom(code = store.getState().room?.code) {
     const room = store.getState().room;
-    if (room) {
-      this.socket.emit('leaveRoom', { code: room.code });
+    if (room && code) {
+      this.socket.emit('leaveRoom', { code });
     }
   }
 }

@@ -148,6 +148,41 @@ export function setupSocketHandlers(io) {
       cb?.({ ok: true });
     });
 
+    socket.on('updateConfig', ({ code, config }, cb) => {
+      const room = getRoom(code);
+      if (!room) return cb?.({ ok: false });
+      if (room.hostId !== socket.id) return cb?.({ ok: false });
+      if (room.phase !== GAME_PHASES.LOBBY) return cb?.({ ok: false });
+
+      const songsPerPlayer = Number(config?.songsPerPlayer);
+      if (Number.isInteger(songsPerPlayer) && songsPerPlayer >= 2 && songsPerPlayer <= 6) {
+        room.config.songsPerPlayer = songsPerPlayer;
+      }
+
+      io.to(room.code).emit('roomUpdate', roomPublic(room));
+      cb?.({ ok: true, room: roomPublic(room) });
+    });
+
+    socket.on('launchGame', ({ code }, cb) => {
+      const room = getRoom(code);
+      if (!room) return cb?.({ ok: false });
+      if (room.hostId !== socket.id) return cb?.({ ok: false });
+      if (room.phase !== GAME_PHASES.READY) return cb?.({ ok: false });
+
+      buildPlaylist(room);
+      room.phase = GAME_PHASES.PLAYING;
+      room.currentSong = getCurrentSong(room);
+
+      io.to(room.code).emit('phaseChange', { phase: GAME_PHASES.PLAYING });
+      io.to(room.code).emit('songUpdate', {
+        song: room.currentSong.song,
+        index: room.currentIndex,
+        total: room.playlist.length,
+      });
+
+      cb?.({ ok: true });
+    });
+
     socket.on('guess', ({ code, guess }, cb) => {
       const room = getRoom(code);
       if (!room) return cb?.({ ok: false });
