@@ -123,8 +123,8 @@ export function registerSocketHandlers(io: Server) {
         Array.isArray(songs) ? songs : [],
       );
       io.to(room.code).emit("roomUpdate", roomPublic(room));
-      if (room.phase === "ready")
-        io.to(room.code).emit("phaseChange", { phase: room.phase });
+      if (result.ok && result.phase === "ready")
+        io.to(room.code).emit("phaseChange", { phase: result.phase });
       cb?.(result);
     });
 
@@ -166,9 +166,9 @@ export function registerSocketHandlers(io: Server) {
     socket.on("nextSong", ({ code } = {}) => {
       const room = getRoom(code);
       if (!room || room.hostId !== socket.id || room.phase !== "reveal") return;
-      nextSong(room);
-      io.to(room.code).emit("phaseChange", { phase: room.phase });
-      if (room.phase === "finished")
+      const phase = nextSong(room);
+      io.to(room.code).emit("phaseChange", { phase });
+      if (phase === "finished")
         io.to(room.code).emit("leaderboard", {
           leaderboard: leaderboard(room),
         });
