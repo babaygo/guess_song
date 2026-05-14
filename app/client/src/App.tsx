@@ -23,6 +23,14 @@ import type {
 } from "./types/game";
 import { sanitizeCode, sanitizeName } from "./utils/sanitize";
 
+function parseStoredSession(value: string | null) {
+  try {
+    return JSON.parse(value || "{}") as { code?: string; name?: string; ts?: number };
+  } catch {
+    return {};
+  }
+}
+
 export default function App() {
   const [phase, setPhase] = useState<Phase>("home");
   const [name, setName] = useState("");
@@ -54,6 +62,7 @@ export default function App() {
   const stopAudio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
+      audioRef.current.onended = null;
       audioRef.current.src = "";
       audioRef.current = null;
     }
@@ -63,14 +72,22 @@ export default function App() {
   const persistSession = useCallback((nextRoom: Room, nextName: string) => {
     const key = `${SESSION_PREFIX}${nextRoom.code}`;
     sessionKeyRef.current = key;
-    localStorage.setItem(
-      key,
-      JSON.stringify({ code: nextRoom.code, name: nextName, ts: Date.now() }),
-    );
+    try {
+      localStorage.setItem(
+        key,
+        JSON.stringify({ code: nextRoom.code, name: nextName, ts: Date.now() }),
+      );
+    } catch {
+      sessionKeyRef.current = null;
+    }
   }, []);
 
   const clearSession = useCallback(() => {
-    if (sessionKeyRef.current) localStorage.removeItem(sessionKeyRef.current);
+    try {
+      if (sessionKeyRef.current) localStorage.removeItem(sessionKeyRef.current);
+    } catch {
+      // Ignore storage cleanup failures; the server-side leave still matters most.
+    }
     sessionKeyRef.current = null;
   }, []);
 
@@ -154,6 +171,9 @@ export default function App() {
     const handleDisconnect = () => {
       setError("Connexion perdue. Recharge la page si elle ne revient pas.");
     };
+    const handleConnect = () => {
+      setError("");
+    };
 
     socket.on("roomUpdate", handleRoomUpdate);
     socket.on("phaseChange", handlePhaseChange);
@@ -162,6 +182,7 @@ export default function App() {
     socket.on("revealResults", handleRevealResults);
     socket.on("leaderboard", handleLeaderboard);
     socket.on("disconnect", handleDisconnect);
+    socket.on("connect", handleConnect);
 
     return () => {
       socket.off("roomUpdate", handleRoomUpdate);
@@ -171,6 +192,7 @@ export default function App() {
       socket.off("revealResults", handleRevealResults);
       socket.off("leaderboard", handleLeaderboard);
       socket.off("disconnect", handleDisconnect);
+      socket.off("connect", handleConnect);
     };
   }, [stopAudio]);
 
@@ -181,31 +203,41 @@ export default function App() {
     const lastKey = keys
       .map((key) => ({
         key,
-        ts: JSON.parse(localStorage.getItem(key) || "{}")?.ts ?? 0,
+        ts: parseStoredSession(localStorage.getItem(key)).ts ?? 0,
       }))
       .sort((left, right) => right.ts - left.ts)[0]?.key;
     if (!lastKey) return;
 
     sessionKeyRef.current = lastKey;
-    const saved = JSON.parse(localStorage.getItem(lastKey) || "{}") as {
-      code?: string;
-      name?: string;
-    };
+    const saved = parseStoredSession(localStorage.getItem(lastKey));
     const cleanName = sanitizeName(saved.name ?? "");
     const code = sanitizeCode(saved.code ?? "");
     if (!cleanName || !code) return;
 
+    let active = true;
     emitWithAck<ServerResponse>("reconnectRoom", {
       code,
       name: cleanName,
     }).then((response) => {
+      if (!active) return;
       if (!response?.ok) {
         clearSession();
         return;
       }
       applyReconnectPayload(response, cleanName);
     });
+
+    return () => {
+      active = false;
+    };
   }, [applyReconnectPayload, clearSession]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
+      stopAudio();
+    };
+  }, [stopAudio]);
 
   useEffect(() => {
     if (phase !== "playing" || !isHost || !currentSong?.song.preview) return;
@@ -215,6 +247,7 @@ export default function App() {
     audio.play().catch(() => undefined);
     return () => {
       audio.pause();
+      audio.onended = null;
       audio.src = "";
       if (audioRef.current === audio) audioRef.current = null;
     };
@@ -326,7 +359,7 @@ export default function App() {
     audio.volume = 0.8;
     audioRef.current = audio;
     setPreviewingId(song.id);
-    audio.addEventListener("ended", () => setPreviewingId(null));
+    audio.onended = () => setPreviewingId(null);
     audio.play().catch(() => undefined);
   };
 
