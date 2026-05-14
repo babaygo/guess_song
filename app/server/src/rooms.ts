@@ -3,13 +3,14 @@ import { sanitize, sanitizeSong } from "./sanitize.js";
 import type { Player, PublicRoom, Room, RoomConfig, Song } from "./types.js";
 
 const ROOM_RECONNECT_GRACE_MS = 120000;
+const ROOM_CODE_BYTES = 3;
 
 export const rooms = new Map<string, Room>();
 
 export function generateUniqueRoomCode() {
   let code = "";
   do {
-    code = crypto.randomBytes(2).toString("hex").toUpperCase();
+    code = crypto.randomBytes(ROOM_CODE_BYTES).toString("hex").toUpperCase();
   } while (rooms.has(code));
   return code;
 }

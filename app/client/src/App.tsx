@@ -285,8 +285,8 @@ export default function App() {
       setError("Entre ton pseudo !");
       return;
     }
-    if (code.length !== 4) {
-      setError("Entre le code à 4 caractères.");
+    if (code.length !== 6) {
+      setError("Entre le code à 6 caractères.");
       return;
     }
 
