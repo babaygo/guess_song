@@ -1,2 +1,4 @@
 POC/
 node_modules/
+
+.env
