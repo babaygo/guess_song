@@ -32,7 +32,7 @@ export function Home({ createRoom, error, joinCode, joinRoom, name, setJoinCode,
             id="input-name"
             maxLength={20}
             onChange={(event) => setName(event.target.value)}
-            placeholder="ex: Clara"
+            placeholder="ex: Simon"
             type="text"
             value={name}
           />
