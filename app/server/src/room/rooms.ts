@@ -71,11 +71,15 @@ export function transferHostIfNeeded(room: Room, socketId: string) {
   room.hostName = nextHost?.name ?? null;
 }
 
-export function disconnectPlayer(room: Room, socketId: string) {
+export function disconnectPlayer(
+  room: Room,
+  socketId: string,
+  options: { transferHost?: boolean } = {},
+) {
   const player = room.players.find((candidate) => candidate.id === socketId);
   if (!player) return false;
   player.id = null;
-  transferHostIfNeeded(room, socketId);
+  if (options.transferHost) transferHostIfNeeded(room, socketId);
   return true;
 }
 

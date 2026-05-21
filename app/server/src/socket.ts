@@ -113,7 +113,7 @@ export function registerSocketHandlers(io: Server) {
     socket.on("leaveRoom", ({ code } = {}) => {
       const room = getRoom(code);
       if (!room) return;
-      if (!disconnectPlayer(room, socket.id)) return;
+      if (!disconnectPlayer(room, socket.id, { transferHost: true })) return;
       socket.leave(room.code);
 
       if (!hasActivePlayers(room)) scheduleRoomCleanup(room);
