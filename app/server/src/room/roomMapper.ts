@@ -4,7 +4,10 @@ export function roomPublic(room: Room): PublicRoom {
   const players =
     room.phase === "lobby"
       ? room.players.filter((player) => player.id !== null)
-      : room.players.map((player) => ({ ...player, guess: null }));
+      : room.players.map((player) => ({
+          ...player,
+          guess: player.guess === null ? null : "submitted",
+        }));
 
   return {
     code: room.code,
