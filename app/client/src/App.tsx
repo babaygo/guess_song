@@ -382,7 +382,8 @@ export default function App() {
       setError(response.error ?? "Erreur envoi.");
       return;
     }
-    setPhase("waiting");
+    setError("");
+    setPhase(response.phase === "ready" ? "ready" : "waiting");
   };
 
   const makeGuess = (playerName: string) => {
