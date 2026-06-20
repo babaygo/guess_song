@@ -41,7 +41,7 @@ export function registerSocketHandlers(io: Server) {
     socket.use((packet, next) => {
       const event = String(packet[0] ?? "");
       const limit = SOCKET_LIMITS[event] ?? DEFAULT_SOCKET_LIMIT;
-      const address = socket.handshake.address || socket.id;
+      const address = clientAddress(socket);
 
       if (checkRateLimit(`${address}:${event}`, limit)) {
         next();
@@ -221,6 +221,19 @@ export function registerSocketHandlers(io: Server) {
       }
     });
   });
+}
+
+// Socket.IO has no `trust proxy`, so derive the real client IP from
+// X-Forwarded-For when a proxy is trusted. Falls back to the raw handshake
+// address otherwise (and never trusts a spoofable header when TRUST_PROXY=0).
+function clientAddress(socket: Socket): string {
+  if (env.TRUST_PROXY > 0) {
+    const forwarded = socket.handshake.headers["x-forwarded-for"];
+    const first = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+    const ip = first?.split(",")[0]?.trim();
+    if (ip) return ip;
+  }
+  return socket.handshake.address || socket.id;
 }
 
 function fail(cb: Callback | undefined, error: string) {

@@ -9,6 +9,11 @@ import { registerSocketHandlers } from "./socket.js";
 
 const app = express();
 
+// Behind a reverse proxy (e.g. Render), the socket address is the proxy's, so
+// req.ip must be resolved from X-Forwarded-For — otherwise every client shares
+// one rate-limit bucket and a single abuser throttles everyone.
+app.set("trust proxy", env.TRUST_PROXY);
+
 app.use(cors({ origin: env.CLIENT_ORIGIN }));
 app.get(
   "/api/search",
