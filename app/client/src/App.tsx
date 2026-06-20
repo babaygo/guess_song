@@ -9,6 +9,7 @@ import { Ready } from "./pages/Ready";
 import { Playing } from "./pages/Playing";
 import { Reveal } from "./pages/Reveal";
 import { Finished } from "./pages/Finished";
+import { ErrorScreen } from "./components/ErrorScreen";
 import { searchSongs } from "./services/songSearch";
 import { emitWithAck } from "./services/socketEvents";
 import { socket } from "./types/socket";
@@ -53,6 +54,7 @@ export default function App() {
   const [guess, setGuess] = useState<string | null>(null);
   const [reveal, setReveal] = useState<RevealData | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardItem[]>([]);
+  const [fatalError, setFatalError] = useState<{ message: string; actionLabel: string } | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sessionKeyRef = useRef<string | null>(null);
@@ -116,6 +118,20 @@ export default function App() {
     setIsHost(false);
     setPhase("home");
   }, [clearSession, room, stopAudio]);
+
+  const recoverFromError = useCallback(() => {
+    stopAudio();
+    clearSession();
+    setRoom(null);
+    setIsHost(false);
+    setCurrentSong(null);
+    setReveal(null);
+    setLeaderboard([]);
+    setGuess(null);
+    setError("");
+    setFatalError(null);
+    setPhase("home");
+  }, [clearSession, stopAudio]);
 
   const applyReconnectPayload = useCallback(
     (response: ServerResponse, cleanName: string) => {
@@ -232,6 +248,9 @@ export default function App() {
       setError("");
       attemptReconnect();
     };
+    const handleConnectError = () => {
+      setError("Connexion au serveur impossible. Nouvelle tentative…");
+    };
 
     socket.on("roomUpdate", handleRoomUpdate);
     socket.on("phaseChange", handlePhaseChange);
@@ -241,6 +260,7 @@ export default function App() {
     socket.on("leaderboard", handleLeaderboard);
     socket.on("disconnect", handleDisconnect);
     socket.on("connect", handleConnect);
+    socket.on("connect_error", handleConnectError);
 
     if (socket.connected) attemptReconnect();
 
@@ -253,6 +273,7 @@ export default function App() {
       socket.off("leaderboard", handleLeaderboard);
       socket.off("disconnect", handleDisconnect);
       socket.off("connect", handleConnect);
+      socket.off("connect_error", handleConnectError);
     };
   }, [attemptReconnect, stopAudio]);
 
@@ -284,22 +305,29 @@ export default function App() {
       return;
     }
 
-    const response = await emitWithAck<ServerResponse>("createRoom", {
-      name: cleanName,
-      config: { songsPerPlayer: 4 },
-    });
-    if (!response.ok || !response.room) {
-      setError(response.error ?? "Erreur création salle.");
-      return;
-    }
+    try {
+      const response = await emitWithAck<ServerResponse>("createRoom", {
+        name: cleanName,
+        config: { songsPerPlayer: 4 },
+      });
+      if (!response.ok || !response.room) {
+        setError(response.error ?? "Erreur création salle.");
+        return;
+      }
 
-    tokenRef.current = response.token ?? null;
-    setName(cleanName);
-    setRoom(response.room);
-    setIsHost(true);
-    setPhase("lobby");
-    setError("");
-    persistSession(response.room, cleanName);
+      tokenRef.current = response.token ?? null;
+      setName(cleanName);
+      setRoom(response.room);
+      setIsHost(true);
+      setPhase("lobby");
+      setError("");
+      persistSession(response.room, cleanName);
+    } catch {
+      setFatalError({
+        message: "Impossible de créer la partie. Vérifie ta connexion.",
+        actionLabel: "Retour à l'accueil",
+      });
+    }
   };
 
   const joinRoom = async (event?: FormEvent) => {
@@ -315,17 +343,24 @@ export default function App() {
       return;
     }
 
-    const response = await emitWithAck<ServerResponse>("joinRoom", {
-      code,
-      name: cleanName,
-    });
-    if (!response.ok || !response.room) {
-      setError(response.error ?? "Impossible de rejoindre cette partie.");
-      return;
-    }
+    try {
+      const response = await emitWithAck<ServerResponse>("joinRoom", {
+        code,
+        name: cleanName,
+      });
+      if (!response.ok || !response.room) {
+        setError(response.error ?? "Impossible de rejoindre cette partie.");
+        return;
+      }
 
-    applyReconnectPayload(response, cleanName);
-    setError("");
+      applyReconnectPayload(response, cleanName);
+      setError("");
+    } catch {
+      setFatalError({
+        message: "Impossible de rejoindre la partie. Vérifie ta connexion.",
+        actionLabel: "Retour à l'accueil",
+      });
+    }
   };
 
   const updateConfig = (songsPerPlayer: number) => {
@@ -399,16 +434,23 @@ export default function App() {
 
   const submitMySongs = async () => {
     if (!room || myList.length !== neededSongs) return;
-    const response = await emitWithAck<ServerResponse>("submitSongs", {
-      code: room.code,
-      songs: myList,
-    });
-    if (!response.ok) {
-      setError(response.error ?? "Erreur envoi.");
-      return;
+    try {
+      const response = await emitWithAck<ServerResponse>("submitSongs", {
+        code: room.code,
+        songs: myList,
+      });
+      if (!response.ok) {
+        setError(response.error ?? "Erreur envoi.");
+        return;
+      }
+      setError("");
+      setPhase(response.phase === "ready" ? "ready" : "waiting");
+    } catch {
+      setFatalError({
+        message: "Impossible d'envoyer tes musiques. Vérifie ta connexion.",
+        actionLabel: "Retour à l'accueil",
+      });
     }
-    setError("");
-    setPhase(response.phase === "ready" ? "ready" : "waiting");
   };
 
   const makeGuess = (playerName: string) => {
@@ -428,6 +470,16 @@ export default function App() {
     else audioRef.current.pause();
   };
 
+  if (fatalError) {
+    return (
+      <ErrorScreen
+        actionLabel={fatalError.actionLabel}
+        message={fatalError.message}
+        onAction={recoverFromError}
+      />
+    );
+  }
+
   if (phase === "home") {
     return (
       <Home
@@ -442,7 +494,15 @@ export default function App() {
     );
   }
 
-  if (!room) return null;
+  if (!room) {
+    return (
+      <ErrorScreen
+        actionLabel="Retour à l'accueil"
+        message="Cette partie n'est plus disponible."
+        onAction={recoverFromError}
+      />
+    );
+  }
 
   if (phase === "lobby") {
     return (
