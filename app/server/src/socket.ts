@@ -223,9 +223,6 @@ export function registerSocketHandlers(io: Server) {
   });
 }
 
-// Socket.IO has no `trust proxy`, so derive the real client IP from
-// X-Forwarded-For when a proxy is trusted. Falls back to the raw handshake
-// address otherwise (and never trusts a spoofable header when TRUST_PROXY=0).
 function clientAddress(socket: Socket): string {
   if (env.TRUST_PROXY > 0) {
     const forwarded = socket.handshake.headers["x-forwarded-for"];
@@ -240,8 +237,6 @@ function fail(cb: Callback | undefined, error: string) {
   cb?.({ ok: false, error });
 }
 
-// Host authority is bound to the secret player token, never to the (public)
-// player name. Only the original host can reclaim the role on reconnect.
 function reclaimHostIfOwner(room: Room, socketId: string, player: Player) {
   if (room.hostToken && player.token === room.hostToken) {
     room.hostId = socketId;

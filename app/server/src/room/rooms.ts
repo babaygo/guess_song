@@ -67,9 +67,6 @@ export function upsertPlayer(room: Room, id: string, name: string, token?: unkno
     return { ok: true as const, player };
   }
 
-  // An existing slot may only be reclaimed by proving ownership with the
-  // secret token issued on first join. Names alone are public, so without
-  // this check anyone could steal a disconnected player's slot (and the host).
   if (typeof token === "string" && token.length > 0 && existing.token === token) {
     existing.id = id;
     return { ok: true as const, player: existing };

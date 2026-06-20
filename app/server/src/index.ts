@@ -10,15 +10,8 @@ import { registerSocketHandlers } from "./socket.js";
 
 const app = express();
 
-// Behind a reverse proxy (e.g. Render), the socket address is the proxy's, so
-// req.ip must be resolved from X-Forwarded-For — otherwise every client shares
-// one rate-limit bucket and a single abuser throttles everyone.
 app.set("trust proxy", env.TRUST_PROXY);
 
-// Security headers (nosniff, HSTS, frameguard, etc.). This is a JSON API
-// consumed cross-origin by a separate client, so CSP — which protects rendered
-// HTML — belongs on the client host, and resources must stay cross-origin
-// readable for the configured client.
 app.use(
   helmet({
     contentSecurityPolicy: false,

@@ -4,9 +4,6 @@ export function sanitize(value: unknown, maxLength = 20) {
   return String(value ?? "").trim().replace(/[<>&"']/g, "").slice(0, maxLength);
 }
 
-// For free-text coming from clients/Deezer (song title, artist): strip angle
-// brackets so a crafted submission can't inject markup. Legitimate punctuation
-// (& apostrophes, accents) is kept — React escapes it safely when rendering.
 export function sanitizeText(value: unknown, maxLength = 200) {
   return String(value ?? "").replace(/[<>]/g, "").slice(0, maxLength);
 }
