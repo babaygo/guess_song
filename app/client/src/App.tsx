@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { SESSION_PREFIX } from "./constants/game";
+import { SESSION_MAX_AGE_MS, SESSION_PREFIX } from "./constants/game";
 import { Home } from "./pages/Home";
 import { Lobby } from "./pages/Lobby";
 import { Submitting } from "./pages/Submitting";
@@ -88,6 +88,11 @@ export default function App() {
           ts: Date.now(),
         }),
       );
+      for (const existing of Object.keys(localStorage)) {
+        if (existing.startsWith(SESSION_PREFIX) && existing !== key) {
+          localStorage.removeItem(existing);
+        }
+      }
     } catch {
       sessionKeyRef.current = null;
     }
@@ -161,6 +166,15 @@ export default function App() {
       if (response?.ok) applyReconnectPayload(response, cleanName);
     });
   }, [applyReconnectPayload]);
+
+  useEffect(() => {
+    const now = Date.now();
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith(SESSION_PREFIX)) continue;
+      const { ts } = parseStoredSession(localStorage.getItem(key));
+      if (!ts || now - ts > SESSION_MAX_AGE_MS) localStorage.removeItem(key);
+    }
+  }, []);
 
   useEffect(() => {
     const handleRoomUpdate = (nextRoom: Room) => {
