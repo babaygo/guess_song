@@ -2,7 +2,7 @@
 
 Jeu de soirée multijoueur : chaque joueur soumet des chansons, puis tout le monde essaie de deviner qui a ajouté chaque morceau.
 
-🔗 **Demo** : [guess song demo](https://guessthesong-wqnf.onrender.com/)
+🔗 **Demo** : [guess song demo](https://guesssong-hza2.onrender.com/)
 
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-000000?style=flat&logo=express&logoColor=white)
