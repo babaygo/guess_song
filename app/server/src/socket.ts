@@ -35,11 +35,13 @@ type SocketHandler = (...args: any[]) => void;
 const GENERIC_ERROR = "Une erreur est survenue cote serveur. Reessaie.";
 
 const HOST_TRANSFER_GRACE_MS = 180000;
+const MAX_LISTED_ROOMS = 12;
 const DEFAULT_SOCKET_LIMIT = { max: 300, windowMs: 10000 };
 const SOCKET_LIMITS: Record<string, { max: number; windowMs: number }> = {
   createRoom: { max: 20, windowMs: 60000 },
   joinRoom: { max: 80, windowMs: 60000 },
   reconnectRoom: { max: 80, windowMs: 60000 },
+  listRooms: { max: 60, windowMs: 60000 },
   submitGuess: { max: 120, windowMs: 10000 },
   submitSongs: { max: 40, windowMs: 60000 },
 };
@@ -121,6 +123,29 @@ export function registerSocketHandlers(io: Server) {
       socket.join(room.code);
       emitRoomUpdate(io, room);
       cb?.(hydratePayload(socket, room, result.player));
+    });
+
+    on("listRooms", ({ rooms } = {}, cb?: Callback) => {
+      const requested = Array.isArray(rooms) ? rooms.slice(0, MAX_LISTED_ROOMS) : [];
+      const result = [];
+      for (const entry of requested) {
+        const room = getRoom(entry?.code);
+        if (!room) continue;
+        const name = sanitize(entry?.name);
+        const token = entry?.token;
+        if (!name || typeof token !== "string" || !token) continue;
+        const player = room.players.find(
+          (candidate) => candidate.name === name && candidate.token === token,
+        );
+        if (!player) continue;
+        result.push({
+          code: room.code,
+          phase: room.phase,
+          hostName: room.hostName,
+          playerCount: room.players.filter((candidate) => candidate.id !== null).length,
+        });
+      }
+      cb?.({ ok: true, rooms: result });
     });
 
     on("leaveRoom", ({ code } = {}) => {

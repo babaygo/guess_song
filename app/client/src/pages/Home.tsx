@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { sanitizeCode } from "../utils/sanitize";
+import type { RecentRoom } from "../types/game";
 
 type HomeProps = {
   createRoom: () => void;
@@ -7,11 +8,36 @@ type HomeProps = {
   joinCode: string;
   joinRoom: (event?: FormEvent) => void;
   name: string;
+  recentRooms: RecentRoom[];
+  rejoinRoom: (code: string) => void;
   setJoinCode: (value: string) => void;
   setName: (value: string) => void;
 };
 
-export function Home({ createRoom, error, joinCode, joinRoom, name, setJoinCode, setName }: HomeProps) {
+const PHASE_LABELS: Record<RecentRoom["phase"], string> = {
+  lobby: "Salon",
+  submitting: "Choix des musiques",
+  ready: "Prête à démarrer",
+  playing: "Partie en cours",
+  reveal: "Partie en cours",
+  finished: "Terminée",
+};
+
+function playerCountLabel(count: number) {
+  return `${count} joueur${count > 1 ? "s" : ""}`;
+}
+
+export function Home({
+  createRoom,
+  error,
+  joinCode,
+  joinRoom,
+  name,
+  recentRooms,
+  rejoinRoom,
+  setJoinCode,
+  setName,
+}: HomeProps) {
   return (
     <main className="app-shell">
       <form className="screen home-screen" onSubmit={joinRoom}>
@@ -22,6 +48,35 @@ export function Home({ createRoom, error, joinCode, joinRoom, name, setJoinCode,
           puis on devine qui a mis quoi !
         </p>
         {error ? <div className="error-msg">{error}</div> : null}
+
+        {recentRooms.length > 0 ? (
+          <div className="card recent-rooms">
+            <span className="section-label">Reprendre une partie</span>
+            <div className="recent-room-list">
+              {recentRooms.map((entry) => (
+                <button
+                  className="recent-room"
+                  key={entry.code}
+                  onClick={() => rejoinRoom(entry.code)}
+                  type="button"
+                >
+                  <span className="recent-room-main">
+                    <span className="recent-room-code">{entry.code}</span>
+                    {entry.name ? (
+                      <span className="recent-room-name">en tant que {entry.name}</span>
+                    ) : null}
+                  </span>
+                  <span className="recent-room-meta">
+                    <span className="recent-room-phase">{PHASE_LABELS[entry.phase]}</span>
+                    <span className="recent-room-count">
+                      {playerCountLabel(entry.playerCount)}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="card">
           <label className="section-label" htmlFor="input-name">

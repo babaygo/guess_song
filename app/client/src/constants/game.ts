@@ -3,4 +3,8 @@ export const BLANK_IMG =
 
 export const SESSION_PREFIX = "guess-song-session-";
 
+export const ACTIVE_SESSION_KEY = "guess-song-active";
+
 export const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export const MAX_RECENT_ROOMS = 6;

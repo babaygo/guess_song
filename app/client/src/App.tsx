@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { SESSION_MAX_AGE_MS, SESSION_PREFIX } from "./constants/game";
+import {
+  ACTIVE_SESSION_KEY,
+  MAX_RECENT_ROOMS,
+  SESSION_MAX_AGE_MS,
+  SESSION_PREFIX,
+} from "./constants/game";
 import { Home } from "./pages/Home";
 import { Lobby } from "./pages/Lobby";
 import { Submitting } from "./pages/Submitting";
@@ -16,7 +21,9 @@ import { socket } from "./types/socket";
 import type {
   CurrentSong,
   LeaderboardItem,
+  ListRoomsResponse,
   Phase,
+  RecentRoom,
   RevealData,
   Room,
   ServerResponse,
@@ -37,6 +44,27 @@ function parseStoredSession(value: string | null) {
   }
 }
 
+type StoredSession = {
+  key: string;
+  code: string;
+  name: string;
+  token: string;
+  ts: number;
+};
+
+function readStoredSessions(): StoredSession[] {
+  const now = Date.now();
+  return Object.keys(localStorage)
+    .filter((key) => key.startsWith(SESSION_PREFIX))
+    .map((key) => ({ key, ...parseStoredSession(localStorage.getItem(key)) }))
+    .filter(
+      (session): session is StoredSession =>
+        Boolean(session.code && session.name && session.token && session.ts) &&
+        now - (session.ts ?? 0) <= SESSION_MAX_AGE_MS,
+    )
+    .sort((left, right) => right.ts - left.ts);
+}
+
 export default function App() {
   const [phase, setPhase] = useState<Phase>("home");
   const [name, setName] = useState("");
@@ -54,6 +82,7 @@ export default function App() {
   const [guess, setGuess] = useState<string | null>(null);
   const [reveal, setReveal] = useState<RevealData | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardItem[]>([]);
+  const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
   const [fatalError, setFatalError] = useState<{ message: string; actionLabel: string } | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -77,6 +106,39 @@ export default function App() {
     setPreviewingId(null);
   }, []);
 
+  const refreshRecentRooms = useCallback(async () => {
+    const sessions = readStoredSessions();
+    if (!sessions.length) {
+      setRecentRooms([]);
+      return;
+    }
+    if (!socket.connected) return;
+
+    const response = await emitWithAck<ListRoomsResponse>("listRooms", {
+      rooms: sessions.map(({ code, name, token }) => ({ code, name, token })),
+    });
+    if (!response?.ok || !Array.isArray(response.rooms)) return;
+
+    const nameByCode = new Map(sessions.map((session) => [session.code, session.name]));
+    const aliveCodes = new Set(response.rooms.map((entry) => entry.code));
+    const activeCode = localStorage.getItem(ACTIVE_SESSION_KEY);
+    for (const session of sessions) {
+      if (aliveCodes.has(session.code) || session.code === activeCode) continue;
+      try {
+        localStorage.removeItem(session.key);
+      } catch {
+        // Ignore storage cleanup failures.
+      }
+    }
+
+    setRecentRooms(
+      response.rooms.map((entry) => ({
+        ...entry,
+        name: nameByCode.get(entry.code) ?? "",
+      })),
+    );
+  }, []);
+
   const persistSession = useCallback((nextRoom: Room, nextName: string) => {
     const key = `${SESSION_PREFIX}${nextRoom.code}`;
     sessionKeyRef.current = key;
@@ -90,19 +152,18 @@ export default function App() {
           ts: Date.now(),
         }),
       );
-      for (const existing of Object.keys(localStorage)) {
-        if (existing.startsWith(SESSION_PREFIX) && existing !== key) {
-          localStorage.removeItem(existing);
-        }
+      localStorage.setItem(ACTIVE_SESSION_KEY, nextRoom.code);
+      for (const stale of readStoredSessions().slice(MAX_RECENT_ROOMS)) {
+        if (stale.key !== key) localStorage.removeItem(stale.key);
       }
     } catch {
       sessionKeyRef.current = null;
     }
   }, []);
 
-  const clearSession = useCallback(() => {
+  const clearActiveSession = useCallback(() => {
     try {
-      if (sessionKeyRef.current) localStorage.removeItem(sessionKeyRef.current);
+      localStorage.removeItem(ACTIVE_SESSION_KEY);
     } catch {
       // Ignore storage cleanup failures; the server-side leave still matters most.
     }
@@ -113,15 +174,16 @@ export default function App() {
   const leaveGame = useCallback(() => {
     if (room) socket.emit("leaveRoom", { code: room.code });
     stopAudio();
-    clearSession();
+    clearActiveSession();
     setRoom(null);
     setIsHost(false);
     setPhase("home");
-  }, [clearSession, room, stopAudio]);
+    refreshRecentRooms();
+  }, [clearActiveSession, refreshRecentRooms, room, stopAudio]);
 
   const recoverFromError = useCallback(() => {
     stopAudio();
-    clearSession();
+    clearActiveSession();
     setRoom(null);
     setIsHost(false);
     setCurrentSong(null);
@@ -131,7 +193,8 @@ export default function App() {
     setError("");
     setFatalError(null);
     setPhase("home");
-  }, [clearSession, stopAudio]);
+    refreshRecentRooms();
+  }, [clearActiveSession, refreshRecentRooms, stopAudio]);
 
   const applyReconnectPayload = useCallback(
     (response: ServerResponse, cleanName: string) => {
@@ -156,14 +219,8 @@ export default function App() {
   const attemptReconnect = useCallback(() => {
     let key = sessionKeyRef.current;
     if (!key) {
-      key =
-        Object.keys(localStorage)
-          .filter((candidate) => candidate.startsWith(SESSION_PREFIX))
-          .map((candidate) => ({
-            candidate,
-            ts: parseStoredSession(localStorage.getItem(candidate)).ts ?? 0,
-          }))
-          .sort((left, right) => right.ts - left.ts)[0]?.candidate ?? null;
+      const activeCode = localStorage.getItem(ACTIVE_SESSION_KEY);
+      key = activeCode ? `${SESSION_PREFIX}${activeCode}` : null;
     }
     if (!key) return;
 
@@ -182,6 +239,43 @@ export default function App() {
       if (response?.ok) applyReconnectPayload(response, cleanName);
     });
   }, [applyReconnectPayload]);
+
+  const rejoinRoom = useCallback(
+    async (code: string) => {
+      const saved = parseStoredSession(localStorage.getItem(`${SESSION_PREFIX}${code}`));
+      const cleanName = sanitizeName(saved.name ?? "");
+      const cleanCode = sanitizeCode(saved.code ?? code);
+      if (!cleanName || !cleanCode) return;
+
+      tokenRef.current = saved.token ?? null;
+      try {
+        const response = await emitWithAck<ServerResponse>("reconnectRoom", {
+          code: cleanCode,
+          name: cleanName,
+          token: saved.token,
+        });
+        if (!response.ok || !response.room) {
+          try {
+            localStorage.removeItem(`${SESSION_PREFIX}${cleanCode}`);
+          } catch {
+            // Ignore storage cleanup failures.
+          }
+          setRecentRooms((rooms) => rooms.filter((entry) => entry.code !== cleanCode));
+          setError(response.error ?? "Cette partie n'est plus disponible.");
+          return;
+        }
+        sessionKeyRef.current = `${SESSION_PREFIX}${cleanCode}`;
+        applyReconnectPayload(response, cleanName);
+        setError("");
+      } catch {
+        setFatalError({
+          message: "Impossible de rejoindre la partie. Vérifie ta connexion.",
+          actionLabel: "Retour à l'accueil",
+        });
+      }
+    },
+    [applyReconnectPayload],
+  );
 
   useEffect(() => {
     const now = Date.now();
@@ -247,6 +341,7 @@ export default function App() {
     const handleConnect = () => {
       setError("");
       attemptReconnect();
+      refreshRecentRooms();
     };
     const handleConnectError = () => {
       setError("Connexion au serveur impossible. Nouvelle tentative…");
@@ -275,7 +370,7 @@ export default function App() {
       socket.off("connect", handleConnect);
       socket.off("connect_error", handleConnectError);
     };
-  }, [attemptReconnect, stopAudio]);
+  }, [attemptReconnect, refreshRecentRooms, stopAudio]);
 
   useEffect(() => {
     return () => {
@@ -488,6 +583,8 @@ export default function App() {
         joinCode={joinCode}
         joinRoom={joinRoom}
         name={name}
+        recentRooms={recentRooms}
+        rejoinRoom={rejoinRoom}
         setJoinCode={setJoinCode}
         setName={setName}
       />

@@ -146,6 +146,68 @@ button, input { font: inherit; }
 .or-row { display: flex; align-items: center; gap: 0.75rem; color: var(--text-muted); font-size: 0.85rem; }
 .divider { border: none; border-top: 1px solid var(--border); flex: 1; }
 
+.recent-rooms { border-color: var(--accent-glow); }
+.recent-room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 13.5rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+  -webkit-overflow-scrolling: touch;
+  margin: -0.25rem;
+  padding: 0.25rem;
+}
+.recent-room-list::-webkit-scrollbar { width: 6px; }
+.recent-room-list::-webkit-scrollbar-track { background: transparent; }
+.recent-room-list::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 999px;
+}
+.recent-room {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 0.7rem 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.recent-room:hover { border-color: var(--accent); }
+.recent-room:active { transform: scale(0.98); }
+.recent-room-main { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.recent-room-code {
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.recent-room-name {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-room-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+.recent-room-phase { font-size: 0.8rem; font-weight: 600; color: var(--text); }
+.recent-room-count { font-size: 0.75rem; color: var(--text-muted); }
+
 .room-code-row { display: flex; align-items: center; gap: 0.5rem; }
 .room-code {
   font-size: 3.5rem;

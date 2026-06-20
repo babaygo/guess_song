@@ -44,6 +44,19 @@ export type LeaderboardItem = {
   score: number;
 };
 
+export type RecentRoom = {
+  code: string;
+  name: string;
+  phase: Room["phase"];
+  playerCount: number;
+  hostName: string | null;
+};
+
+export type ListRoomsResponse = {
+  ok?: boolean;
+  rooms?: Array<Omit<RecentRoom, "name">>;
+};
+
 export type ServerResponse = {
   ok?: boolean;
   error?: string;
