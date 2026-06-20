@@ -132,6 +132,36 @@ export default function App() {
     [persistSession],
   );
 
+  const attemptReconnect = useCallback(() => {
+    let key = sessionKeyRef.current;
+    if (!key) {
+      key =
+        Object.keys(localStorage)
+          .filter((candidate) => candidate.startsWith(SESSION_PREFIX))
+          .map((candidate) => ({
+            candidate,
+            ts: parseStoredSession(localStorage.getItem(candidate)).ts ?? 0,
+          }))
+          .sort((left, right) => right.ts - left.ts)[0]?.candidate ?? null;
+    }
+    if (!key) return;
+
+    sessionKeyRef.current = key;
+    const saved = parseStoredSession(localStorage.getItem(key));
+    const cleanName = sanitizeName(saved.name ?? "");
+    const code = sanitizeCode(saved.code ?? "");
+    if (!cleanName || !code) return;
+
+    tokenRef.current = saved.token ?? null;
+    emitWithAck<ServerResponse>("reconnectRoom", {
+      code,
+      name: cleanName,
+      token: saved.token,
+    }).then((response) => {
+      if (response?.ok) applyReconnectPayload(response, cleanName);
+    });
+  }, [applyReconnectPayload]);
+
   useEffect(() => {
     const handleRoomUpdate = (nextRoom: Room) => {
       setRoom(nextRoom);
@@ -182,10 +212,11 @@ export default function App() {
       setPhase("finished");
     };
     const handleDisconnect = () => {
-      setError("Connexion perdue. Recharge la page si elle ne revient pas.");
+      setError("Connexion perdue. Reconnexion automatique en cours...");
     };
     const handleConnect = () => {
       setError("");
+      attemptReconnect();
     };
 
     socket.on("roomUpdate", handleRoomUpdate);
@@ -197,6 +228,8 @@ export default function App() {
     socket.on("disconnect", handleDisconnect);
     socket.on("connect", handleConnect);
 
+    if (socket.connected) attemptReconnect();
+
     return () => {
       socket.off("roomUpdate", handleRoomUpdate);
       socket.off("phaseChange", handlePhaseChange);
@@ -207,45 +240,7 @@ export default function App() {
       socket.off("disconnect", handleDisconnect);
       socket.off("connect", handleConnect);
     };
-  }, [stopAudio]);
-
-  useEffect(() => {
-    const keys = Object.keys(localStorage).filter((key) =>
-      key.startsWith(SESSION_PREFIX),
-    );
-    const lastKey = keys
-      .map((key) => ({
-        key,
-        ts: parseStoredSession(localStorage.getItem(key)).ts ?? 0,
-      }))
-      .sort((left, right) => right.ts - left.ts)[0]?.key;
-    if (!lastKey) return;
-
-    sessionKeyRef.current = lastKey;
-    const saved = parseStoredSession(localStorage.getItem(lastKey));
-    const cleanName = sanitizeName(saved.name ?? "");
-    const code = sanitizeCode(saved.code ?? "");
-    if (!cleanName || !code) return;
-    tokenRef.current = saved.token ?? null;
-
-    let active = true;
-    emitWithAck<ServerResponse>("reconnectRoom", {
-      code,
-      name: cleanName,
-      token: saved.token,
-    }).then((response) => {
-      if (!active) return;
-      if (!response?.ok) {
-        clearSession();
-        return;
-      }
-      applyReconnectPayload(response, cleanName);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [applyReconnectPayload, clearSession]);
+  }, [attemptReconnect, stopAudio]);
 
   useEffect(() => {
     return () => {
