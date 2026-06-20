@@ -29,8 +29,11 @@ import {
 import type { Player, Room } from "./types/types.js";
 
 type Callback = (payload: Record<string, unknown>) => void;
+type SocketHandler = (...args: any[]) => void;
 
-const HOST_TRANSFER_GRACE_MS = 30000;
+const GENERIC_ERROR = "Une erreur est survenue cote serveur. Reessaie.";
+
+const HOST_TRANSFER_GRACE_MS = 180000;
 const DEFAULT_SOCKET_LIMIT = { max: 300, windowMs: 10000 };
 const SOCKET_LIMITS: Record<string, { max: number; windowMs: number }> = {
   createRoom: { max: 20, windowMs: 60000 },
@@ -42,6 +45,9 @@ const SOCKET_LIMITS: Record<string, { max: number; windowMs: number }> = {
 
 export function registerSocketHandlers(io: Server) {
   io.on("connection", (socket) => {
+    const on = (event: string, handler: SocketHandler) =>
+      socket.on(event, guard(event, handler));
+
     socket.use((packet, next) => {
       const event = String(packet[0] ?? "");
       const limit = SOCKET_LIMITS[event] ?? DEFAULT_SOCKET_LIMIT;
@@ -58,7 +64,7 @@ export function registerSocketHandlers(io: Server) {
       }
     });
 
-    socket.on("createRoom", ({ name, config } = {}, cb?: Callback) => {
+    on("createRoom", ({ name, config } = {}, cb?: Callback) => {
       if (roomStore.size >= env.MAX_ACTIVE_ROOMS)
         return fail(cb, "Trop de salles actives. Reessaie plus tard.");
 
@@ -70,7 +76,7 @@ export function registerSocketHandlers(io: Server) {
       cb?.({ ok: true, code: room.code, room: roomPublic(room), token: room.hostToken });
     });
 
-    socket.on("joinRoom", ({ code, name, token } = {}, cb?: Callback) => {
+    on("joinRoom", ({ code, name, token } = {}, cb?: Callback) => {
       const room = getRoom(code);
       const clean = sanitize(name);
       if (!room) return fail(cb, "Salle introuvable.");
@@ -99,7 +105,7 @@ export function registerSocketHandlers(io: Server) {
       cb?.(hydratePayload(socket, room, result.player));
     });
 
-    socket.on("reconnectRoom", ({ code, name, token } = {}, cb?: Callback) => {
+    on("reconnectRoom", ({ code, name, token } = {}, cb?: Callback) => {
       const room = getRoom(code);
       const clean = sanitize(name);
       if (!room || !clean)
@@ -116,7 +122,7 @@ export function registerSocketHandlers(io: Server) {
       cb?.(hydratePayload(socket, room, result.player));
     });
 
-    socket.on("leaveRoom", ({ code } = {}) => {
+    on("leaveRoom", ({ code } = {}) => {
       const room = getRoom(code);
       if (!room) return;
       if (!disconnectPlayer(room, socket.id, { transferHost: true })) return;
@@ -126,14 +132,14 @@ export function registerSocketHandlers(io: Server) {
       emitRoomUpdate(io, room);
     });
 
-    socket.on("updateConfig", ({ code, config } = {}) => {
+    on("updateConfig", ({ code, config } = {}) => {
       const room = getRoom(code);
       if (!room || room.hostId !== socket.id || room.phase !== "lobby") return;
       updateRoomConfig(room, config);
       emitRoomUpdate(io, room);
     });
 
-    socket.on("startSubmission", ({ code } = {}) => {
+    on("startSubmission", ({ code } = {}) => {
       const room = getRoom(code);
       if (
         !room ||
@@ -147,7 +153,7 @@ export function registerSocketHandlers(io: Server) {
       emitRoomUpdate(io, room);
     });
 
-    socket.on("submitSongs", ({ code, songs } = {}, cb?: Callback) => {
+    on("submitSongs", ({ code, songs } = {}, cb?: Callback) => {
       const room = getRoom(code);
       if (!room) return fail(cb, "Salle introuvable.");
       if (room.phase !== "submitting") return fail(cb, "La salle n'accepte pas de musiques.");
@@ -162,7 +168,7 @@ export function registerSocketHandlers(io: Server) {
       cb?.(result);
     });
 
-    socket.on("launchGame", ({ code } = {}) => {
+    on("launchGame", ({ code } = {}) => {
       const room = getRoom(code);
       if (!room || room.hostId !== socket.id || room.phase !== "ready") return;
       launchGame(room);
@@ -170,14 +176,14 @@ export function registerSocketHandlers(io: Server) {
       emitSong(io, room);
     });
 
-    socket.on("submitGuess", ({ code, guess } = {}) => {
+    on("submitGuess", ({ code, guess } = {}) => {
       const room = getRoom(code);
       if (!room || room.phase !== "playing") return;
       submitGuess(room, socket.id, guess);
       emitRoomUpdate(io, room);
     });
 
-    socket.on("revealSong", ({ code } = {}) => {
+    on("revealSong", ({ code } = {}) => {
       const room = getRoom(code);
       if (
         !room ||
@@ -197,7 +203,7 @@ export function registerSocketHandlers(io: Server) {
       emitRoomUpdate(io, room);
     });
 
-    socket.on("nextSong", ({ code } = {}) => {
+    on("nextSong", ({ code } = {}) => {
       const room = getRoom(code);
       if (!room || room.hostId !== socket.id || room.phase !== "reveal") return;
       const phase = nextSong(room);
@@ -210,7 +216,7 @@ export function registerSocketHandlers(io: Server) {
       emitRoomUpdate(io, room);
     });
 
-    socket.on("restartGame", ({ code } = {}) => {
+    on("restartGame", ({ code } = {}) => {
       const room = getRoom(code);
       if (!room || room.hostId !== socket.id) return;
       restartRoom(room);
@@ -218,7 +224,7 @@ export function registerSocketHandlers(io: Server) {
       emitRoomUpdate(io, room);
     });
 
-    socket.on("disconnect", () => {
+    on("disconnect", () => {
       for (const room of roomStore.values()) {
         if (!disconnectPlayer(room, socket.id)) continue;
         const hostLeft = room.hostId === socket.id;
@@ -239,6 +245,18 @@ function clientAddress(socket: Socket): string {
     if (ip) return ip;
   }
   return socket.handshake.address || socket.id;
+}
+
+function guard(event: string, handler: SocketHandler): SocketHandler {
+  return (...args) => {
+    try {
+      handler(...args);
+    } catch (error) {
+      console.error(`socket handler failed: ${event}`, error);
+      const ack = args[args.length - 1];
+      if (typeof ack === "function") ack({ ok: false, error: GENERIC_ERROR });
+    }
+  };
 }
 
 function fail(cb: Callback | undefined, error: string) {

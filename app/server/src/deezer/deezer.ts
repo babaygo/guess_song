@@ -11,13 +11,17 @@ export async function searchHandler(req: Request, res: Response) {
   try {
     const search = await searchDeezerTracks(q, limit);
     if (!search.ok) {
-      return res.status(search.status).json({ error: `Deezer ${search.status}`, results: [] });
+      return res
+        .status(502)
+        .json({ error: "Recherche musicale indisponible pour le moment. Reessaie.", results: [] });
     }
 
     res.set("Cache-Control", "public, max-age=60");
     return res.json({ results: search.results });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur inconnue";
-    return res.status(500).json({ error: `Erreur serveur: ${message}`, results: [] });
+    console.error("search handler failed", error);
+    return res
+      .status(500)
+      .json({ error: "Recherche musicale indisponible pour le moment. Reessaie.", results: [] });
   }
 }
