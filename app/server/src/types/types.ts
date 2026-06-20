@@ -42,11 +42,12 @@ export type Room = {
   playedCount: number;
   currentSong: Submission | null;
   cleanupTimer: NodeJS.Timeout | null;
+  hostTransferTimer: NodeJS.Timeout | null;
 };
 
 export type PublicPlayer = Omit<Player, "token">;
 
 export type PublicRoom = Omit<
   Room,
-  "submissions" | "playlist" | "remainingPlaylist" | "currentSong" | "cleanupTimer" | "hostToken" | "players"
+  "submissions" | "playlist" | "remainingPlaylist" | "currentSong" | "cleanupTimer" | "hostTransferTimer" | "hostToken" | "players"
 > & { players: PublicPlayer[] };

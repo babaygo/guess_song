@@ -38,6 +38,7 @@ export function createRoom(hostId: string, name: unknown, config?: Partial<RoomC
     playedCount: 0,
     currentSong: null,
     cleanupTimer: null,
+    hostTransferTimer: null,
   };
 
   const host = addPlayer(room, hostId, hostName);
@@ -104,7 +105,10 @@ export function scheduleRoomCleanup(room: Room) {
   cancelRoomCleanup(room);
   room.cleanupTimer = setTimeout(() => {
     const current = roomStore.get(room.code);
-    if (current && !hasActivePlayers(current)) roomStore.delete(room.code);
+    if (current && !hasActivePlayers(current)) {
+      cancelHostTransfer(current);
+      roomStore.delete(room.code);
+    }
   }, ROOM_RECONNECT_GRACE_MS);
 }
 
@@ -112,6 +116,25 @@ export function cancelRoomCleanup(room: Room) {
   if (!room.cleanupTimer) return;
   clearTimeout(room.cleanupTimer);
   room.cleanupTimer = null;
+}
+
+export function cancelHostTransfer(room: Room) {
+  if (!room.hostTransferTimer) return;
+  clearTimeout(room.hostTransferTimer);
+  room.hostTransferTimer = null;
+}
+
+export function isHostConnected(room: Room) {
+  const host = room.players.find((player) => player.token === room.hostToken);
+  return Boolean(host && host.id !== null);
+}
+
+export function promoteActiveHost(room: Room) {
+  const nextHost = room.players.filter((player) => player.id !== null).at(-1);
+  room.hostId = nextHost?.id ?? null;
+  room.hostName = nextHost?.name ?? null;
+  room.hostToken = nextHost?.token ?? null;
+  return nextHost ?? null;
 }
 
 export function updateRoomConfig(room: Room, config?: Partial<RoomConfig>) {

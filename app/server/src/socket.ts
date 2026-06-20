@@ -5,15 +5,18 @@ import { roomPublic } from "./room/roomMapper.js";
 import { roomStore } from "./room/roomStore.js";
 import { sanitize } from "./utils/sanitize.js";
 import {
+  cancelHostTransfer,
   cancelRoomCleanup,
   computeResults,
   createRoom,
   disconnectPlayer,
   getRoom,
   hasActivePlayers,
+  isHostConnected,
   leaderboard,
   launchGame,
   nextSong,
+  promoteActiveHost,
   restartRoom,
   revealSong,
   scheduleRoomCleanup,
@@ -27,6 +30,7 @@ import type { Player, Room } from "./types/types.js";
 
 type Callback = (payload: Record<string, unknown>) => void;
 
+const HOST_TRANSFER_GRACE_MS = 30000;
 const DEFAULT_SOCKET_LIMIT = { max: 300, windowMs: 10000 };
 const SOCKET_LIMITS: Record<string, { max: number; windowMs: number }> = {
   createRoom: { max: 20, windowMs: 60000 },
@@ -88,6 +92,7 @@ export function registerSocketHandlers(io: Server) {
       const result = upsertPlayer(room, socket.id, clean, token);
       if (!result.ok) return fail(cb, result.error);
       reclaimHostIfOwner(room, socket.id, result.player);
+      if (isHostConnected(room)) cancelHostTransfer(room);
 
       socket.join(room.code);
       emitRoomUpdate(io, room);
@@ -104,6 +109,7 @@ export function registerSocketHandlers(io: Server) {
       const result = upsertPlayer(room, socket.id, clean, token);
       if (!result.ok) return fail(cb, "Session deja active sur un autre appareil.");
       reclaimHostIfOwner(room, socket.id, result.player);
+      if (isHostConnected(room)) cancelHostTransfer(room);
 
       socket.join(room.code);
       emitRoomUpdate(io, room);
@@ -215,7 +221,9 @@ export function registerSocketHandlers(io: Server) {
     socket.on("disconnect", () => {
       for (const room of roomStore.values()) {
         if (!disconnectPlayer(room, socket.id)) continue;
+        const hostLeft = room.hostId === socket.id;
         if (!hasActivePlayers(room)) scheduleRoomCleanup(room);
+        else if (hostLeft) scheduleHostTransfer(io, room);
         emitRoomUpdate(io, room);
         break;
       }
@@ -242,6 +250,17 @@ function reclaimHostIfOwner(room: Room, socketId: string, player: Player) {
     room.hostId = socketId;
     room.hostName = player.name;
   }
+}
+
+function scheduleHostTransfer(io: Server, room: Room) {
+  cancelHostTransfer(room);
+  room.hostTransferTimer = setTimeout(() => {
+    const current = roomStore.get(room.code);
+    if (!current) return;
+    current.hostTransferTimer = null;
+    if (isHostConnected(current)) return;
+    if (promoteActiveHost(current)) emitRoomUpdate(io, current);
+  }, HOST_TRANSFER_GRACE_MS);
 }
 
 function emitPhaseChange(io: Server, room: Room) {
