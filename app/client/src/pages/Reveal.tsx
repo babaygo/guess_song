@@ -45,7 +45,7 @@ export function Reveal({ currentSong, isHost, leaveGame, nextSong, reveal }: Rev
               {reveal.results.map((result) => (
                 <div className={`result-row ${result.correct ? "correct" : "wrong"}`} key={result.playerName}>
                   <span>{result.playerName}</span>
-                  <span>{result.correct ? "Bien joué !" : "Nop :("}</span>
+                  <span>{result.correct ? "Bien joué !" : "Dommage !"}</span>
                 </div>
               ))}
             </div>

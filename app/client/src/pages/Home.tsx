@@ -87,7 +87,7 @@ export function Home({
             id="input-name"
             maxLength={20}
             onChange={(event) => setName(event.target.value)}
-            placeholder="ex: Simon"
+            placeholder="ex: Anonyme"
             type="text"
             value={name}
           />
