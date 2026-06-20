@@ -1,4 +1,4 @@
-import { validateArtworkUrl, validatePreviewUrl } from "../utils/sanitize.js";
+import { sanitizeText, validateArtworkUrl, validatePreviewUrl } from "../utils/sanitize.js";
 import type { Song } from "../types/types.js";
 
 type DeezerTrack = {
@@ -31,8 +31,8 @@ function mapDeezerTracks(tracks: DeezerTrack[]): Song[] {
     .filter((track) => track.id && track.title)
     .map((track) => ({
       id: Number(track.id),
-      title: track.title ?? "Titre inconnu",
-      artist: track.artist?.name ?? "",
+      title: sanitizeText(track.title) || "Titre inconnu",
+      artist: sanitizeText(track.artist?.name),
       artwork: validateArtworkUrl(track.album?.cover_medium),
       preview: validatePreviewUrl(track.preview),
     }));
