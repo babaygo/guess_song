@@ -173,14 +173,20 @@ export function submitSongs(room: Room, socketId: string, songs: unknown[]) {
   player.ready = true;
   player.songCount = valid.length;
 
-  const activePlayers = room.players.filter((candidate) => candidate.id !== null);
-  if (activePlayers.length > 0 && activePlayers.every((candidate) => candidate.ready)) {
-    room.phase = "ready";
-    room.playlist = [...room.submissions];
-    room.remainingPlaylist = shuffle([...room.submissions]);
-  }
+  maybeStartGame(room);
 
   return { ok: true as const, phase: room.phase };
+}
+
+export function maybeStartGame(room: Room) {
+  if (room.phase !== "submitting") return false;
+  const activePlayers = room.players.filter((player) => player.id !== null);
+  if (activePlayers.length < 2 || !activePlayers.every((player) => player.ready)) return false;
+
+  room.phase = "ready";
+  room.playlist = [...room.submissions];
+  room.remainingPlaylist = shuffle([...room.submissions]);
+  return true;
 }
 
 export function launchGame(room: Room) {

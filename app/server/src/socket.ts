@@ -15,6 +15,7 @@ import {
   isHostConnected,
   leaderboard,
   launchGame,
+  maybeStartGame,
   nextSong,
   promoteActiveHost,
   restartRoom,
@@ -129,6 +130,7 @@ export function registerSocketHandlers(io: Server) {
       socket.leave(room.code);
 
       if (!hasActivePlayers(room)) scheduleRoomCleanup(room);
+      if (maybeStartGame(room)) emitPhaseChange(io, room);
       emitRoomUpdate(io, room);
     });
 
@@ -230,6 +232,7 @@ export function registerSocketHandlers(io: Server) {
         const hostLeft = room.hostId === socket.id;
         if (!hasActivePlayers(room)) scheduleRoomCleanup(room);
         else if (hostLeft) scheduleHostTransfer(io, room);
+        if (maybeStartGame(room)) emitPhaseChange(io, room);
         emitRoomUpdate(io, room);
         break;
       }
