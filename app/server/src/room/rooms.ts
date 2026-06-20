@@ -28,6 +28,7 @@ export function createRoom(hostId: string, name: unknown, config?: Partial<RoomC
     code,
     hostId,
     hostName,
+    hostToken: null,
     phase: "lobby",
     config: { songsPerPlayer: normalizeSongsPerPlayer(config?.songsPerPlayer) },
     players: [],
@@ -39,28 +40,42 @@ export function createRoom(hostId: string, name: unknown, config?: Partial<RoomC
     cleanupTimer: null,
   };
 
-  addPlayer(room, hostId, hostName);
+  const host = addPlayer(room, hostId, hostName);
+  room.hostToken = host.token;
   roomStore.set(room);
   return room;
 }
 
 export function addPlayer(room: Room, id: string, name: string) {
-  room.players.push({ id, name, ready: false, songCount: 0, guess: null, score: 0 });
+  const player: Player = {
+    id,
+    token: crypto.randomUUID(),
+    name,
+    ready: false,
+    songCount: 0,
+    guess: null,
+    score: 0,
+  };
+  room.players.push(player);
+  return player;
 }
 
-export function upsertPlayer(room: Room, id: string, name: string) {
+export function upsertPlayer(room: Room, id: string, name: string, token?: unknown) {
   const existing = room.players.find((player) => player.name === name);
   if (!existing) {
-    addPlayer(room, id, name);
-    return { ok: true as const, player: room.players.at(-1) as Player };
+    const player = addPlayer(room, id, name);
+    return { ok: true as const, player };
   }
 
-  if (existing.id && existing.id !== id) {
-    return { ok: false as const, error: "Ce nom est deja pris." };
+  // An existing slot may only be reclaimed by proving ownership with the
+  // secret token issued on first join. Names alone are public, so without
+  // this check anyone could steal a disconnected player's slot (and the host).
+  if (typeof token === "string" && token.length > 0 && existing.token === token) {
+    existing.id = id;
+    return { ok: true as const, player: existing };
   }
 
-  existing.id = id;
-  return { ok: true as const, player: existing };
+  return { ok: false as const, error: "Ce nom est deja pris." };
 }
 
 export function transferHostIfNeeded(room: Room, socketId: string) {
@@ -69,6 +84,7 @@ export function transferHostIfNeeded(room: Room, socketId: string) {
   const nextHost = activePlayers.at(-1);
   room.hostId = nextHost?.id ?? null;
   room.hostName = nextHost?.name ?? null;
+  room.hostToken = nextHost?.token ?? null;
 }
 
 export function disconnectPlayer(

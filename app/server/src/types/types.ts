@@ -10,6 +10,7 @@ export type Song = {
 
 export type Player = {
   id: string | null;
+  token: string;
   name: string;
   ready: boolean;
   songCount: number;
@@ -31,6 +32,7 @@ export type Room = {
   code: string;
   hostId: string | null;
   hostName: string | null;
+  hostToken: string | null;
   phase: Phase;
   config: RoomConfig;
   players: Player[];
@@ -42,4 +44,9 @@ export type Room = {
   cleanupTimer: NodeJS.Timeout | null;
 };
 
-export type PublicRoom = Omit<Room, "submissions" | "playlist" | "remainingPlaylist" | "currentSong" | "cleanupTimer">;
+export type PublicPlayer = Omit<Player, "token">;
+
+export type PublicRoom = Omit<
+  Room,
+  "submissions" | "playlist" | "remainingPlaylist" | "currentSong" | "cleanupTimer" | "hostToken" | "players"
+> & { players: PublicPlayer[] };

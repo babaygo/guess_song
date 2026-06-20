@@ -1,11 +1,18 @@
-import type { PublicRoom, Room } from "../types/types.js";
+import type { PublicPlayer, PublicRoom, Room } from "../types/types.js";
+
+function toPublicPlayer(player: Room["players"][number]): PublicPlayer {
+  const { token: _token, ...rest } = player;
+  return rest;
+}
 
 export function roomPublic(room: Room): PublicRoom {
   const players =
     room.phase === "lobby"
-      ? room.players.filter((player) => player.id !== null)
+      ? room.players
+          .filter((player) => player.id !== null)
+          .map(toPublicPlayer)
       : room.players.map((player) => ({
-          ...player,
+          ...toPublicPlayer(player),
           guess: player.guess === null ? null : "submitted",
         }));
 

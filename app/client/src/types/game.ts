@@ -47,6 +47,7 @@ export type LeaderboardItem = {
 export type ServerResponse = {
   ok?: boolean;
   error?: string;
+  token?: string;
   room?: Room;
   isHost?: boolean;
   phase?: Room["phase"];

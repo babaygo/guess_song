@@ -25,7 +25,12 @@ import { sanitizeCode, sanitizeName } from "./utils/sanitize";
 
 function parseStoredSession(value: string | null) {
   try {
-    return JSON.parse(value || "{}") as { code?: string; name?: string; ts?: number };
+    return JSON.parse(value || "{}") as {
+      code?: string;
+      name?: string;
+      token?: string;
+      ts?: number;
+    };
   } catch {
     return {};
   }
@@ -51,6 +56,7 @@ export default function App() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sessionKeyRef = useRef<string | null>(null);
+  const tokenRef = useRef<string | null>(null);
   const searchTimerRef = useRef<number | null>(null);
 
   const activePlayers = useMemo(
@@ -75,7 +81,12 @@ export default function App() {
     try {
       localStorage.setItem(
         key,
-        JSON.stringify({ code: nextRoom.code, name: nextName, ts: Date.now() }),
+        JSON.stringify({
+          code: nextRoom.code,
+          name: nextName,
+          token: tokenRef.current,
+          ts: Date.now(),
+        }),
       );
     } catch {
       sessionKeyRef.current = null;
@@ -89,6 +100,7 @@ export default function App() {
       // Ignore storage cleanup failures; the server-side leave still matters most.
     }
     sessionKeyRef.current = null;
+    tokenRef.current = null;
   }, []);
 
   const leaveGame = useCallback(() => {
@@ -103,6 +115,7 @@ export default function App() {
   const applyReconnectPayload = useCallback(
     (response: ServerResponse, cleanName: string) => {
       if (!response.room) return;
+      if (response.token) tokenRef.current = response.token;
       setName(cleanName);
       setRoom(response.room);
       setIsHost(Boolean(response.isHost));
@@ -213,11 +226,13 @@ export default function App() {
     const cleanName = sanitizeName(saved.name ?? "");
     const code = sanitizeCode(saved.code ?? "");
     if (!cleanName || !code) return;
+    tokenRef.current = saved.token ?? null;
 
     let active = true;
     emitWithAck<ServerResponse>("reconnectRoom", {
       code,
       name: cleanName,
+      token: saved.token,
     }).then((response) => {
       if (!active) return;
       if (!response?.ok) {
@@ -269,6 +284,7 @@ export default function App() {
       return;
     }
 
+    tokenRef.current = response.token ?? null;
     setName(cleanName);
     setRoom(response.room);
     setIsHost(true);

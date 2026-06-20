@@ -23,7 +23,7 @@ import {
   updateRoomConfig,
   upsertPlayer,
 } from "./room/rooms.js";
-import type { Room } from "./types/types.js";
+import type { Player, Room } from "./types/types.js";
 
 type Callback = (payload: Record<string, unknown>) => void;
 
@@ -63,10 +63,10 @@ export function registerSocketHandlers(io: Server) {
 
       const room = createRoom(socket.id, clean, config);
       socket.join(room.code);
-      cb?.({ ok: true, code: room.code, room: roomPublic(room) });
+      cb?.({ ok: true, code: room.code, room: roomPublic(room), token: room.hostToken });
     });
 
-    socket.on("joinRoom", ({ code, name } = {}, cb?: Callback) => {
+    socket.on("joinRoom", ({ code, name, token } = {}, cb?: Callback) => {
       const room = getRoom(code);
       const clean = sanitize(name);
       if (!room) return fail(cb, "Salle introuvable.");
@@ -85,29 +85,29 @@ export function registerSocketHandlers(io: Server) {
       }
 
       cancelRoomCleanup(room);
-      const result = upsertPlayer(room, socket.id, clean);
+      const result = upsertPlayer(room, socket.id, clean, token);
       if (!result.ok) return fail(cb, result.error);
-      if (room.hostName === clean) room.hostId = socket.id;
+      reclaimHostIfOwner(room, socket.id, result.player);
 
       socket.join(room.code);
       emitRoomUpdate(io, room);
-      cb?.(hydratePayload(socket, room));
+      cb?.(hydratePayload(socket, room, result.player));
     });
 
-    socket.on("reconnectRoom", ({ code, name } = {}, cb?: Callback) => {
+    socket.on("reconnectRoom", ({ code, name, token } = {}, cb?: Callback) => {
       const room = getRoom(code);
       const clean = sanitize(name);
       if (!room || !clean)
         return fail(cb, "Session introuvable.");
 
       cancelRoomCleanup(room);
-      const result = upsertPlayer(room, socket.id, clean);
+      const result = upsertPlayer(room, socket.id, clean, token);
       if (!result.ok) return fail(cb, "Session deja active sur un autre appareil.");
-      if (room.hostName === clean) room.hostId = socket.id;
+      reclaimHostIfOwner(room, socket.id, result.player);
 
       socket.join(room.code);
       emitRoomUpdate(io, room);
-      cb?.(hydratePayload(socket, room));
+      cb?.(hydratePayload(socket, room, result.player));
     });
 
     socket.on("leaveRoom", ({ code } = {}) => {
@@ -227,6 +227,15 @@ function fail(cb: Callback | undefined, error: string) {
   cb?.({ ok: false, error });
 }
 
+// Host authority is bound to the secret player token, never to the (public)
+// player name. Only the original host can reclaim the role on reconnect.
+function reclaimHostIfOwner(room: Room, socketId: string, player: Player) {
+  if (room.hostToken && player.token === room.hostToken) {
+    room.hostId = socketId;
+    room.hostName = player.name;
+  }
+}
+
 function emitPhaseChange(io: Server, room: Room) {
   io.to(room.code).emit("phaseChange", { phase: room.phase });
 }
@@ -235,12 +244,13 @@ function emitRoomUpdate(io: Server, room: Room) {
   io.to(room.code).emit("roomUpdate", roomPublic(room));
 }
 
-function hydratePayload(socket: Socket, room: Room) {
+function hydratePayload(socket: Socket, room: Room, player: Player) {
   const payload: Record<string, unknown> = {
     ok: true,
     room: roomPublic(room),
     isHost: room.hostId === socket.id,
     phase: room.phase,
+    token: player.token,
   };
 
   if (
