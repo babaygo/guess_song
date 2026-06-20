@@ -3,7 +3,7 @@ import { LeaveButton } from "../components/LeaveButton";
 import type { CurrentSong, Player } from "../types/game";
 
 type PlayingProps = {
-  activePlayers: Player[];
+  participants: Player[];
   currentSong: CurrentSong;
   guess: string | null;
   isHost: boolean;
@@ -13,8 +13,9 @@ type PlayingProps = {
   toggleHostPlayback: () => void;
 };
 
-export function Playing({ activePlayers, currentSong, guess, isHost, leaveGame, makeGuess, revealSong, toggleHostPlayback }: PlayingProps) {
-  const everyoneGuessed = activePlayers.length > 1 && activePlayers.every((player) => player.guess !== null);
+export function Playing({ participants, currentSong, guess, isHost, leaveGame, makeGuess, revealSong, toggleHostPlayback }: PlayingProps) {
+  const activeParticipants = participants.filter((player) => player.id !== null);
+  const everyoneGuessed = activeParticipants.length > 1 && activeParticipants.every((player) => player.guess !== null);
 
   return (
     <main className="app-shell">
@@ -46,7 +47,7 @@ export function Playing({ activePlayers, currentSong, guess, isHost, leaveGame, 
         <div className="card">
           <span className="section-label">Qui a mis cette musique ?</span>
           <div className="scroll-list">
-            {activePlayers.map((player) => (
+            {participants.map((player) => (
               <button className={`player-entry guess-entry ${guess === player.name ? "selected" : ""}`} key={player.name} onClick={() => makeGuess(player.name)} type="button">
                 <span>{player.name}</span>
                 {guess === player.name ? <span className="material-symbols-outlined">check_circle</span> : null}

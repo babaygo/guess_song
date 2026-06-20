@@ -194,7 +194,7 @@ export function launchGame(room: Room) {
 
 export function submitGuess(room: Room, socketId: string, guess: unknown) {
   const player = room.players.find((candidate) => candidate.id === socketId);
-  if (!player) return;
+  if (!player || player.songCount === 0) return;
   player.guess = String(guess ?? "").slice(0, 20);
 }
 
@@ -202,6 +202,7 @@ export function revealSong(room: Room) {
   room.phase = "reveal";
   const correctPlayerName = room.currentSong?.playerName;
   room.players.forEach((player) => {
+    if (player.songCount === 0) return;
     if (player.guess === correctPlayerName && player.name !== correctPlayerName) player.score += 1;
   });
 }
@@ -238,14 +239,17 @@ export function restartRoom(room: Room) {
 
 export function computeResults(room: Room) {
   const correctPlayerName = room.currentSong?.playerName;
-  return room.players.map((player) => ({
-    playerName: player.name,
-    correct: player.guess === correctPlayerName,
-  }));
+  return room.players
+    .filter((player) => player.songCount > 0)
+    .map((player) => ({
+      playerName: player.name,
+      correct: player.guess === correctPlayerName,
+    }));
 }
 
 export function leaderboard(room: Room) {
   return room.players
+    .filter((player) => player.songCount > 0)
     .map((player) => ({ name: player.name, score: player.score }))
     .sort((left, right) => right.score - left.score);
 }

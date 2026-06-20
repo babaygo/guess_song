@@ -59,8 +59,8 @@ export default function App() {
   const tokenRef = useRef<string | null>(null);
   const searchTimerRef = useRef<number | null>(null);
 
-  const activePlayers = useMemo(
-    () => room?.players.filter((player) => player.id !== null) ?? [],
+  const participants = useMemo(
+    () => room?.players.filter((player) => player.songCount > 0) ?? [],
     [room],
   );
   const neededSongs = room?.config.songsPerPlayer ?? 4;
@@ -481,7 +481,7 @@ export default function App() {
   if (phase === "playing" && currentSong) {
     return (
       <Playing
-        activePlayers={activePlayers}
+        participants={participants}
         currentSong={currentSong}
         guess={guess}
         isHost={isHost}
