@@ -478,8 +478,8 @@ export default function App() {
     room && isHost && socket.emit("restartGame", { code: room.code });
 
   const onSearch = (value: string) => {
+    setQuery(value);
     const nextQuery = value.trim();
-    setQuery(nextQuery);
     if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
 
     if (nextQuery.length < 2) {
