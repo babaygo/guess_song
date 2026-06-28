@@ -61,8 +61,12 @@ export function addPlayer(room: Room, id: string, name: string) {
   return player;
 }
 
+export function sameName(a: string, b: string) {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 export function upsertPlayer(room: Room, id: string, name: string, token?: unknown) {
-  const existing = room.players.find((player) => player.name === name);
+  const existing = room.players.find((player) => sameName(player.name, name));
   if (!existing) {
     const player = addPlayer(room, id, name);
     return { ok: true as const, player };
@@ -137,6 +141,25 @@ export function promoteActiveHost(room: Room) {
   return nextHost ?? null;
 }
 
+export function promoteActingHost(room: Room) {
+  const next = room.players.filter((player) => player.id !== null).at(-1);
+  if (!next) return null;
+  room.hostId = next.id;
+  room.hostName = next.name;
+  return next;
+}
+
+export function finalizeHostTransfer(room: Room) {
+  const acting = room.players.find(
+    (player) => player.id !== null && player.id === room.hostId,
+  );
+  if (acting) {
+    room.hostToken = acting.token;
+    return acting;
+  }
+  return promoteActiveHost(room);
+}
+
 export function updateRoomConfig(room: Room, config?: Partial<RoomConfig>) {
   room.config.songsPerPlayer = normalizeSongsPerPlayer(config?.songsPerPlayer);
 }
@@ -148,11 +171,23 @@ export function startSubmission(room: Room) {
   room.remainingPlaylist = [];
   room.playedCount = 0;
   room.currentSong = null;
+  room.players = room.players.filter((player) => player.id !== null);
   room.players.forEach((player) => {
     player.ready = false;
     player.songCount = 0;
     player.guess = null;
   });
+}
+
+export function removePlayer(room: Room, player: Player) {
+  room.players = room.players.filter((candidate) => candidate.token !== player.token);
+  room.submissions = room.submissions.filter(
+    (submission) => submission.playerName !== player.name,
+  );
+}
+
+export function pendingSubmitters(room: Room) {
+  return room.players.filter((player) => !player.ready);
 }
 
 export function submitSongs(room: Room, socketId: string, songs: unknown[]) {
@@ -180,8 +215,9 @@ export function submitSongs(room: Room, socketId: string, songs: unknown[]) {
 
 export function maybeStartGame(room: Room) {
   if (room.phase !== "submitting") return false;
-  const activePlayers = room.players.filter((player) => player.id !== null);
-  if (activePlayers.length < 2 || !activePlayers.every((player) => player.ready)) return false;
+  const readyCount = room.players.filter((player) => player.ready).length;
+  if (readyCount < 2) return false;
+  if (pendingSubmitters(room).length > 0) return false;
 
   room.phase = "ready";
   room.playlist = [...room.submissions];

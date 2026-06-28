@@ -7,6 +7,7 @@ import {
   SESSION_PREFIX,
 } from "./constants/game";
 import { Home } from "./pages/Home";
+import { JoinInvite } from "./pages/JoinInvite";
 import { Lobby } from "./pages/Lobby";
 import { Submitting } from "./pages/Submitting";
 import { Waiting } from "./pages/Waiting";
@@ -30,6 +31,7 @@ import type {
   Song,
 } from "./types/game";
 import { sanitizeCode, sanitizeName } from "./utils/sanitize";
+import { currentInviteUrl, readInviteCode } from "./utils/invite";
 
 function parseStoredSession(value: string | null) {
   try {
@@ -68,7 +70,8 @@ function readStoredSessions(): StoredSession[] {
 export default function App() {
   const [phase, setPhase] = useState<Phase>("home");
   const [name, setName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
+  const [inviteCode, setInviteCode] = useState(() => readInviteCode());
+  const [joinCode, setJoinCode] = useState(() => readInviteCode());
   const [room, setRoom] = useState<Room | null>(null);
   const [isHost, setIsHost] = useState(false);
   const [error, setError] = useState("");
@@ -89,6 +92,7 @@ export default function App() {
   const sessionKeyRef = useRef<string | null>(null);
   const tokenRef = useRef<string | null>(null);
   const searchTimerRef = useRef<number | null>(null);
+  const invitePendingRef = useRef<string>(readInviteCode());
 
   const participants = useMemo(
     () => room?.players.filter((player) => player.songCount > 0) ?? [],
@@ -127,7 +131,6 @@ export default function App() {
       try {
         localStorage.removeItem(session.key);
       } catch {
-        // Ignore storage cleanup failures.
       }
     }
 
@@ -165,7 +168,6 @@ export default function App() {
     try {
       localStorage.removeItem(ACTIVE_SESSION_KEY);
     } catch {
-      // Ignore storage cleanup failures; the server-side leave still matters most.
     }
     sessionKeyRef.current = null;
     tokenRef.current = null;
@@ -199,6 +201,7 @@ export default function App() {
   const applyReconnectPayload = useCallback(
     (response: ServerResponse, cleanName: string) => {
       if (!response.room) return;
+      invitePendingRef.current = "";
       if (response.token) tokenRef.current = response.token;
       setName(cleanName);
       setRoom(response.room);
@@ -229,6 +232,7 @@ export default function App() {
     const cleanName = sanitizeName(saved.name ?? "");
     const code = sanitizeCode(saved.code ?? "");
     if (!cleanName || !code) return;
+    if (invitePendingRef.current && invitePendingRef.current !== code) return;
 
     tokenRef.current = saved.token ?? null;
     emitWithAck<ServerResponse>("reconnectRoom", {
@@ -258,7 +262,6 @@ export default function App() {
           try {
             localStorage.removeItem(`${SESSION_PREFIX}${cleanCode}`);
           } catch {
-            // Ignore storage cleanup failures.
           }
           setRecentRooms((rooms) => rooms.filter((entry) => entry.code !== cleanCode));
           setError(response.error ?? "Cette partie n'est plus disponible.");
@@ -335,6 +338,27 @@ export default function App() {
       setLeaderboard(nextLeaderboard);
       setPhase("finished");
     };
+    const handleKicked = () => {
+      stopAudio();
+      if (sessionKeyRef.current) {
+        try {
+          localStorage.removeItem(sessionKeyRef.current);
+        } catch {
+        }
+      }
+      clearActiveSession();
+      setRoom(null);
+      setIsHost(false);
+      setCurrentSong(null);
+      setReveal(null);
+      setLeaderboard([]);
+      setGuess(null);
+      setError("");
+      setFatalError({
+        message: "L'hôte t'a retiré de la partie. Tu peux rejoindre à nouveau avec le code.",
+        actionLabel: "Retour à l'accueil",
+      });
+    };
     const handleDisconnect = () => {
       setError("Connexion perdue. Reconnexion automatique en cours...");
     };
@@ -356,6 +380,7 @@ export default function App() {
     socket.on("disconnect", handleDisconnect);
     socket.on("connect", handleConnect);
     socket.on("connect_error", handleConnectError);
+    socket.on("kicked", handleKicked);
 
     if (socket.connected) attemptReconnect();
 
@@ -369,8 +394,9 @@ export default function App() {
       socket.off("disconnect", handleDisconnect);
       socket.off("connect", handleConnect);
       socket.off("connect_error", handleConnectError);
+      socket.off("kicked", handleKicked);
     };
-  }, [attemptReconnect, refreshRecentRooms, stopAudio]);
+  }, [attemptReconnect, clearActiveSession, refreshRecentRooms, stopAudio]);
 
   useEffect(() => {
     return () => {
@@ -410,6 +436,7 @@ export default function App() {
         return;
       }
 
+      invitePendingRef.current = "";
       tokenRef.current = response.token ?? null;
       setName(cleanName);
       setRoom(response.room);
@@ -458,6 +485,11 @@ export default function App() {
     }
   };
 
+  const dismissInvite = () => {
+    invitePendingRef.current = "";
+    setInviteCode("");
+  };
+
   const updateConfig = (songsPerPlayer: number) => {
     if (!room || !isHost) return;
     socket.emit("updateConfig", {
@@ -465,6 +497,9 @@ export default function App() {
       config: { songsPerPlayer },
     });
   };
+
+  const kickPlayer = (playerName: string) =>
+    room && isHost && socket.emit("kickPlayer", { code: room.code, name: playerName });
 
   const startSubmission = () =>
     room && isHost && socket.emit("startSubmission", { code: room.code });
@@ -559,6 +594,29 @@ export default function App() {
       navigator.clipboard?.writeText(room.code).catch(() => undefined);
   };
 
+  const shareInvite = useCallback(async (): Promise<"shared" | "copied" | "error"> => {
+    if (!room?.code) return "error";
+    const url = currentInviteUrl(room.code);
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: "Guess the Song",
+          text: `Rejoins ma partie Guess the Song (code ${room.code})`,
+          url,
+        });
+        return "shared";
+      } catch (shareError) {
+        if (shareError instanceof Error && shareError.name === "AbortError") return "shared";
+      }
+    }
+    try {
+      await navigator.clipboard?.writeText(url);
+      return "copied";
+    } catch {
+      return "error";
+    }
+  }, [room?.code]);
+
   const toggleHostPlayback = () => {
     if (!audioRef.current) return;
     if (audioRef.current.paused) audioRef.current.play().catch(() => undefined);
@@ -571,6 +629,19 @@ export default function App() {
         actionLabel={fatalError.actionLabel}
         message={fatalError.message}
         onAction={recoverFromError}
+      />
+    );
+  }
+
+  if (phase === "home" && inviteCode) {
+    return (
+      <JoinInvite
+        code={inviteCode}
+        error={error}
+        goHome={dismissInvite}
+        joinRoom={joinRoom}
+        name={name}
+        setName={setName}
       />
     );
   }
@@ -606,9 +677,11 @@ export default function App() {
       <Lobby
         copyRoomCode={copyRoomCode}
         isHost={isHost}
+        kickPlayer={kickPlayer}
         leaveGame={leaveGame}
         name={name}
         room={room}
+        shareInvite={shareInvite}
         startSubmission={startSubmission}
         updateConfig={updateConfig}
       />
@@ -618,7 +691,9 @@ export default function App() {
   if (phase === "submitting") {
     return (
       <Submitting
+        isHost={isHost}
         isSearching={isSearching}
+        kickPlayer={kickPlayer}
         leaveGame={leaveGame}
         myList={myList}
         name={name}
@@ -626,7 +701,9 @@ export default function App() {
         onSearch={onSearch}
         previewingId={previewingId}
         query={query}
+        restartGame={restartGame}
         results={results}
+        room={room}
         searchError={searchError}
         submitMySongs={submitMySongs}
         togglePreview={togglePreview}
@@ -636,7 +713,16 @@ export default function App() {
   }
 
   if (phase === "waiting")
-    return <Waiting leaveGame={leaveGame} room={room} />;
+    return (
+      <Waiting
+        isHost={isHost}
+        kickPlayer={kickPlayer}
+        leaveGame={leaveGame}
+        name={name}
+        restartGame={restartGame}
+        room={room}
+      />
+    );
 
   if (phase === "ready")
     return (
@@ -645,6 +731,7 @@ export default function App() {
         launchGame={launchGame}
         leaveGame={leaveGame}
         neededSongs={neededSongs}
+        restartGame={restartGame}
         room={room}
       />
     );
@@ -658,6 +745,7 @@ export default function App() {
         isHost={isHost}
         leaveGame={leaveGame}
         makeGuess={makeGuess}
+        restartGame={restartGame}
         revealSong={revealSong}
         toggleHostPlayback={toggleHostPlayback}
       />
@@ -671,6 +759,7 @@ export default function App() {
         isHost={isHost}
         leaveGame={leaveGame}
         nextSong={nextSong}
+        restartGame={restartGame}
         reveal={reveal}
       />
     );

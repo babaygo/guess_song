@@ -1,3 +1,4 @@
+import { HostResetButton } from "../components/HostResetButton";
 import { LeaveButton } from "../components/LeaveButton";
 import type { Room } from "../types/game";
 
@@ -6,10 +7,11 @@ type ReadyProps = {
   launchGame: () => void;
   leaveGame: () => void;
   neededSongs: number;
+  restartGame: () => void;
   room: Room;
 };
 
-export function Ready({ isHost, launchGame, leaveGame, neededSongs, room }: ReadyProps) {
+export function Ready({ isHost, launchGame, leaveGame, neededSongs, restartGame, room }: ReadyProps) {
   const total = room.players.length * neededSongs;
 
   return (
@@ -37,6 +39,7 @@ export function Ready({ isHost, launchGame, leaveGame, neededSongs, room }: Read
           ) : (
             <p className="subtitle">L'hôte va lancer la partie...</p>
           )}
+          <HostResetButton isHost={isHost} restartGame={restartGame} />
         </div>
       </section>
     </main>

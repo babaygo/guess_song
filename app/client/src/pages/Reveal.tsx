@@ -1,4 +1,5 @@
 import { BLANK_IMG } from "../constants/game";
+import { HostResetButton } from "../components/HostResetButton";
 import { LeaveButton } from "../components/LeaveButton";
 import type { CurrentSong, RevealData } from "../types/game";
 
@@ -7,10 +8,11 @@ type RevealProps = {
   isHost: boolean;
   leaveGame: () => void;
   nextSong: () => void;
+  restartGame: () => void;
   reveal: RevealData;
 };
 
-export function Reveal({ currentSong, isHost, leaveGame, nextSong, reveal }: RevealProps) {
+export function Reveal({ currentSong, isHost, leaveGame, nextSong, restartGame, reveal }: RevealProps) {
   const isLast = currentSong.index >= currentSong.total - 1;
 
   return (
@@ -53,10 +55,13 @@ export function Reveal({ currentSong, isHost, leaveGame, nextSong, reveal }: Rev
         ) : null}
         <div className="spacer" />
         {isHost ? (
-          <button className="btn btn-primary btn-lg" onClick={nextSong} type="button">
-            <span>{isLast ? "Voir le récap" : "Musique suivante"}</span>
-            <span className="material-symbols-outlined">{isLast ? "flag" : "arrow_forward"}</span>
-          </button>
+          <>
+            <button className="btn btn-primary btn-lg" onClick={nextSong} type="button">
+              <span>{isLast ? "Voir le récap" : "Musique suivante"}</span>
+              <span className="material-symbols-outlined">{isLast ? "flag" : "arrow_forward"}</span>
+            </button>
+            <HostResetButton isHost={isHost} restartGame={restartGame} />
+          </>
         ) : (
           <div className="info-box">L'hôte passe à la suite...</div>
         )}

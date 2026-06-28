@@ -126,6 +126,26 @@ button, input { font: inherit; }
 .btn-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); padding: 0.7rem 1.2rem; }
 .btn-ghost { background: transparent; color: var(--text-muted); padding: 0.45rem 0.6rem; font-size: 0.9rem; }
 .btn-ghost:hover { color: var(--red); }
+.btn-share { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.85rem; }
+.btn-share .material-symbols-outlined { font-size: 1.15rem; }
+.share-note { margin-top: 0.5rem; color: var(--green); }
+.invite-back { display: inline-flex; align-items: center; gap: 0.3rem; align-self: flex-start; color: var(--text); }
+.invite-back:hover { color: var(--accent); }
+.invite-back .material-symbols-outlined { font-size: 1.15rem; }
+.input:disabled { opacity: 0.85; cursor: not-allowed; letter-spacing: 0.15em; }
+.players-menu { width: 100%; }
+.players-menu-toggle { display: flex; align-items: center; gap: 8px; width: 100%; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.6rem 1rem; cursor: pointer; }
+.players-menu-toggle .chevron { margin-left: auto; }
+.players-menu-list { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.5rem 0.75rem; }
+.player-entry-name { display: inline-flex; align-items: center; gap: 4px; }
+.player-entry-side { display: inline-flex; align-items: center; gap: 8px; }
+.status-pill { font-size: 0.72rem; color: var(--text-muted); padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); }
+.status-pill.is-ready { color: var(--green); border-color: rgba(34, 197, 94, 0.4); }
+.status-pill.is-off { color: var(--red); border-color: rgba(239, 68, 68, 0.4); }
+.host-reset { display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-top: 0.6rem; color: var(--text-muted); }
+.host-reset:hover { color: var(--accent); }
+.host-reset .material-symbols-outlined { font-size: 1.1rem; }
+.vote-hint { text-align: center; margin-bottom: 0.5rem; }
 
 .input {
   width: 100%;

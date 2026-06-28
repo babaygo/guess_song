@@ -1,4 +1,5 @@
 import { BLANK_IMG } from "../constants/game";
+import { HostResetButton } from "../components/HostResetButton";
 import { LeaveButton } from "../components/LeaveButton";
 import type { CurrentSong, Player } from "../types/game";
 
@@ -9,13 +10,15 @@ type PlayingProps = {
   isHost: boolean;
   leaveGame: () => void;
   makeGuess: (playerName: string) => void;
+  restartGame: () => void;
   revealSong: () => void;
   toggleHostPlayback: () => void;
 };
 
-export function Playing({ participants, currentSong, guess, isHost, leaveGame, makeGuess, revealSong, toggleHostPlayback }: PlayingProps) {
+export function Playing({ participants, currentSong, guess, isHost, leaveGame, makeGuess, restartGame, revealSong, toggleHostPlayback }: PlayingProps) {
   const activeParticipants = participants.filter((player) => player.id !== null);
-  const everyoneGuessed = activeParticipants.length > 1 && activeParticipants.every((player) => player.guess !== null);
+  const guessedCount = activeParticipants.filter((player) => player.guess !== null).length;
+  const everyoneGuessed = activeParticipants.length > 1 && guessedCount === activeParticipants.length;
 
   return (
     <main className="app-shell">
@@ -58,10 +61,18 @@ export function Playing({ participants, currentSong, guess, isHost, leaveGame, m
 
         <div className="spacer" />
         {isHost ? (
-          <button className="btn btn-primary btn-lg" disabled={!everyoneGuessed} onClick={revealSong} type="button">
-            <span>Révéler qui a ajouté ça</span>
-            <span className="material-symbols-outlined">visibility</span>
-          </button>
+          <>
+            {!everyoneGuessed ? (
+              <p className="ui-meta vote-hint">
+                {guessedCount} / {activeParticipants.length} ont voté — tu peux révéler quand tu veux
+              </p>
+            ) : null}
+            <button className="btn btn-primary btn-lg" onClick={revealSong} type="button">
+              <span>Révéler qui a ajouté ça</span>
+              <span className="material-symbols-outlined">visibility</span>
+            </button>
+            <HostResetButton isHost={isHost} restartGame={restartGame} />
+          </>
         ) : null}
       </section>
     </main>

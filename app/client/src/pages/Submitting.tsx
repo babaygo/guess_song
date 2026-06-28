@@ -1,9 +1,13 @@
+import { HostResetButton } from "../components/HostResetButton";
 import { LeaveButton } from "../components/LeaveButton";
+import { PlayersMenu } from "../components/PlayersMenu";
 import { SongItem } from "../components/SongItem";
-import type { Song } from "../types/game";
+import type { Room, Song } from "../types/game";
 
 type SubmittingProps = {
+  isHost: boolean;
   isSearching: boolean;
+  kickPlayer: (name: string) => void;
   leaveGame: () => void;
   myList: Song[];
   name: string;
@@ -11,7 +15,9 @@ type SubmittingProps = {
   onSearch: (value: string) => void;
   previewingId: number | null;
   query: string;
+  restartGame: () => void;
   results: Song[];
+  room: Room;
   searchError: string;
   submitMySongs: () => void;
   togglePreview: (song: Song) => void;
@@ -19,7 +25,9 @@ type SubmittingProps = {
 };
 
 export function Submitting({
+  isHost,
   isSearching,
+  kickPlayer,
   leaveGame,
   myList,
   name,
@@ -27,7 +35,9 @@ export function Submitting({
   onSearch,
   previewingId,
   query,
+  restartGame,
   results,
+  room,
   searchError,
   submitMySongs,
   togglePreview,
@@ -49,6 +59,14 @@ export function Submitting({
             {myList.length}/{neededSongs}
           </span>
         </div>
+
+        <PlayersMenu
+          hostId={room.hostId}
+          isHost={isHost}
+          myName={name}
+          onKick={kickPlayer}
+          players={room.players}
+        />
 
         <div className="info-box">Les autres ne voient pas ce que tu ajoutes</div>
 
@@ -104,6 +122,7 @@ export function Submitting({
         <button className={`btn btn-primary btn-lg ${isDone ? "btn-pulse" : ""}`} disabled={!isDone} onClick={submitMySongs} type="button">
           {isDone ? "Valider mes musiques" : `Ajoute encore ${neededSongs - myList.length} musique${neededSongs - myList.length > 1 ? "s" : ""}`}
         </button>
+        <HostResetButton isHost={isHost} restartGame={restartGame} />
         <LeaveButton onLeave={leaveGame} variant="full" />
       </section>
     </main>
