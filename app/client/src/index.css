@@ -446,3 +446,82 @@ button, input { font: inherit; }
 
 .error-screen { justify-content: center; align-items: center; text-align: center; }
 .error-icon { font-size: 64px; color: var(--red); }
+
+.app-shell-home { flex-direction: column; gap: 1rem; }
+
+.site-footer {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0 1.25rem;
+  color: var(--text-muted);
+}
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem 1rem;
+}
+.footer-links a, .footer-link-btn {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.footer-links a:hover, .footer-link-btn:hover { color: var(--accent); }
+.footer-copy { font-size: 0.75rem; color: var(--text-muted); }
+
+.legal-shell { align-items: flex-start; }
+.legal-screen {
+  max-width: 720px;
+  min-height: auto;
+  gap: 1rem;
+  padding-top: 1.5rem;
+}
+.legal-back { color: var(--text-muted); }
+.legal-back:hover { color: var(--accent); }
+.legal-title { text-align: left; font-size: 1.6rem; }
+.legal-updated { font-size: 0.8rem; }
+.legal-content { line-height: 1.6; }
+.legal-content h2 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin: 1.4rem 0 0.5rem;
+  color: var(--text);
+}
+.legal-content h2:first-child { margin-top: 0; }
+.legal-content p { color: var(--text-muted); font-size: 0.92rem; margin-bottom: 0.6rem; }
+.legal-content ul { color: var(--text-muted); font-size: 0.92rem; margin: 0 0 0.6rem 1.1rem; }
+.legal-content li { margin-bottom: 0.3rem; }
+.legal-content a { color: var(--accent); }
+.legal-content strong { color: var(--text); }
+.legal-content .btn { margin: 0.2rem 0 0.4rem; }
+.legal-note { color: var(--green); font-size: 0.85rem; margin-top: 0.4rem; }
+
+.cookie-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.35);
+}
+.cookie-text { color: var(--text-muted); font-size: 0.85rem; line-height: 1.5; max-width: 640px; }
+.cookie-link { color: var(--accent); }
+.cookie-actions { display: flex; gap: 0.6rem; flex-shrink: 0; }
+.cookie-actions .btn { padding: 0.6rem 1.1rem; }
+@media (min-width: 640px) {
+  .cookie-banner { flex-direction: row; align-items: center; justify-content: space-between; }
+}

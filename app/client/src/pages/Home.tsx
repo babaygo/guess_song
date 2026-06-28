@@ -1,6 +1,7 @@
 import type { FormEvent } from "react";
 import { sanitizeCode } from "../utils/sanitize";
 import type { RecentRoom } from "../types/game";
+import { Footer } from "../components/Footer";
 
 type HomeProps = {
   createRoom: () => void;
@@ -39,7 +40,7 @@ export function Home({
   setName,
 }: HomeProps) {
   return (
-    <main className="app-shell">
+    <main className="app-shell app-shell-home">
       <form className="screen home-screen" onSubmit={joinRoom}>
         <h1 className="title">Guess the Song</h1>
         <p className="subtitle">
@@ -120,6 +121,7 @@ export function Home({
           </button>
         </div>
       </form>
+      <Footer />
     </main>
   );
 }
